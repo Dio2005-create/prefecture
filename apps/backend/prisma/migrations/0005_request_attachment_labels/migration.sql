@@ -1,0 +1,1 @@
+ALTER TABLE "RequestAttachment" ADD COLUMN "label" TEXT;

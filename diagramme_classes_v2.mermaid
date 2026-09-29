@@ -1,0 +1,136 @@
+%% Diagramme de classes - Système de Gestion Documentaire Intelligente (LLM/RAG)
+%% Périmètre : cœur métier documentaire + moteur RAG.
+%% La gestion des utilisateurs/droits (Utilisateur, Service, JournalAudit)
+%% est modélisée séparément côté backend NestJS (voir conception §5.5).
+
+classDiagram
+
+    %% ===== Domaine documentaire =====
+    class DocumentAdministratif {
+        +String id
+        +String titre
+        +String contenuTexte
+        +TypeDocument type
+        +LocalDate date
+        +Map~String,String~ metadonnees
+        +Categorie categorie
+        +List~Chunk~ chunks
+        +String cheminFichier
+        +boolean estNumerise()
+        +void ajouterChunk(Chunk c)
+    }
+
+    class TypeDocument {
+        <<enumeration>>
+        ACTE
+        ARRETE
+        COURRIER
+        AUTRE
+    }
+
+    class Categorie {
+        +String id
+        +String libelle
+        +String description
+        +List~String~ motsCles
+    }
+
+    class Chunk {
+        +String id
+        +String documentId
+        +String contenu
+        +int position
+        +Map~String,String~ metadonnees
+    }
+
+    %% ===== Pipeline de traitement (ex-NLPProcessor éclaté par responsabilité) =====
+    class OCRService {
+        <<interface>>
+        +String extraireTexte(String cheminFichier)
+    }
+
+    class ClassificationService {
+        <<interface>>
+        +Categorie classifier(DocumentAdministratif doc)
+    }
+
+    class ChunkingService {
+        <<interface>>
+        +List~Chunk~ decouperEnChunks(DocumentAdministratif doc)
+    }
+
+    class EmbeddingService {
+        <<interface>>
+        +float[] vectoriser(String texte)
+    }
+    note for EmbeddingService "Modèle d'embeddings dédié\n(ex. multilingual-e5), distinct du LLM\nde génération : évite la duplication\nvue dans la v1 (NLPProcessor.vectoriser\nvs LLMLocal.encoder)."
+
+    class MetadataExtractor {
+        <<interface>>
+        +void enrichirMetadonnees(DocumentAdministratif doc)
+    }
+
+    %% ===== Recherche / génération =====
+    class VectorStore {
+        +void ajouterChunks(List~Chunk~ chunks, List~float[]~ vecteurs)
+        +List~Chunk~ rechercherSimilaires(float[] requeteEmbedding, int topK)
+        +void supprimerParDocument(String documentId)
+    }
+
+    class LLMLocal {
+        +String generer(String prompt)
+        +boolean estDisponible()
+    }
+    note for LLMLocal "Génération de texte uniquement.\nLa vectorisation est du ressort\nd'EmbeddingService (séparation des rôles)."
+
+    class RAGEngine {
+        -EmbeddingService embeddingService
+        -VectorStore vectorStore
+        -LLMLocal llm
+        +String repondre(String questionUtilisateur)
+        +List~Chunk~ recupererContexte(String question, int topK)
+        +String genererReponse(String question, List~Chunk~ contexte)
+    }
+
+    class RequeteUtilisateur {
+        +String id
+        +String texte
+        +LocalDateTime date
+        +String utilisateurId
+        +String reponseGeneree
+        +List~Chunk~ sourcesUtilisees
+    }
+
+    %% ===== Orchestration =====
+    class GestionnaireDocuments {
+        -OCRService ocr
+        -ClassificationService classifier
+        -ChunkingService chunker
+        -EmbeddingService embeddings
+        -MetadataExtractor metadataExtractor
+        -VectorStore vectorStore
+        +DocumentAdministratif numeriserEtIndexer(String cheminFichier)
+        +List~DocumentAdministratif~ rechercherParCategorie(Categorie cat)
+        +void reindexerDocument(String documentId)
+    }
+
+    %% ===== Relations - domaine =====
+    DocumentAdministratif "1" *-- "*" Chunk : contient
+    DocumentAdministratif "*" --> "1" TypeDocument : est de type
+    DocumentAdministratif "*" --> "0..1" Categorie : appartient à
+
+    %% ===== Relations - orchestration du pipeline d'indexation =====
+    GestionnaireDocuments ..> OCRService : utilise
+    GestionnaireDocuments ..> ClassificationService : utilise
+    GestionnaireDocuments ..> ChunkingService : utilise
+    GestionnaireDocuments ..> EmbeddingService : utilise
+    GestionnaireDocuments ..> MetadataExtractor : utilise
+    GestionnaireDocuments ..> VectorStore : indexe
+    GestionnaireDocuments ..> DocumentAdministratif : produit
+
+    %% ===== Relations - moteur RAG =====
+    RAGEngine *-- EmbeddingService
+    RAGEngine *-- VectorStore
+    RAGEngine *-- LLMLocal
+    RAGEngine ..> RequeteUtilisateur : produit
+    RequeteUtilisateur "1" --> "*" Chunk : cite comme source

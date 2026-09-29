@@ -1,0 +1,30 @@
+flowchart LR
+  subgraph Citoyen
+    C1[Remplit formulaire]
+    C2[Ajoute pièces]
+    C3[Consulte notifications]
+    C4[Réserve empreinte]
+  end
+  subgraph Plateforme
+    P1[API NestJS]
+    P2[PostgreSQL]
+    P3[Stockage fichiers]
+    P4[Service IA / Qdrant]
+  end
+  subgraph Agent_prefecture
+    A1[Admin instruit]
+    A2[Admin configure tarifs]
+    A3[Admin gère rendez-vous]
+  end
+  subgraph Superadmin
+    S1[Crée les admins]
+  end
+  C1 --> P1 --> P2
+  C2 --> P3
+  C3 <-- P1
+  C4 --> P1
+  A1 --> P1
+  A2 --> P1
+  A3 --> P1
+  S1 --> P1
+  P1 --> P4

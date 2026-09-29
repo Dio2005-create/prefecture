@@ -1,0 +1,404 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TypeDocument {
+  ACTE
+  ARRETE
+  COURRIER
+  AUTRE
+}
+
+enum StatutDocument {
+  BROUILLON
+  EN_TRAITEMENT
+  VALIDE
+  ARCHIVE
+  ERREUR
+}
+
+enum RoleUtilisateur {
+  CITIZEN
+  ADMIN
+}
+
+enum RoleName {
+  CITIZEN
+  ADMIN
+}
+
+model PlatformSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  updatedAt   DateTime @updatedAt
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  PENDING_VERIFICATION
+  BLOCKED
+}
+
+enum RequestStatus {
+  DRAFT
+  SUBMITTED
+  PENDING_CHIEF
+  IN_REVIEW
+  PENDING_PREFECT
+  PENDING_PAYMENT
+  IN_PROGRESS
+  NEEDS_INFO
+  APPROVED
+  REJECTED
+  CANCELLED
+  ARCHIVED
+}
+
+enum RequestType {
+  BIRTH_CERTIFICATE
+  RESIDENCE_CERTIFICATE
+  NATIONALITY_CERTIFICATE
+  CIN_REQUEST
+  CIN_RENEWAL
+  GOOD_CHARACTER_CERTIFICATE
+  BUILDING_PERMIT
+  LAND_STATUS
+  COMMERCIAL_LICENSE
+  VEHICLE_REGISTRATION
+  LOSS_DECLARATION
+  SIGNATURE_LEGALIZATION
+  COMPLAINT
+  SPECIAL_REQUEST
+  ASSOCIATION_DECLARATION
+  EVENT_AUTHORIZATION
+  ACCREDITATION
+  ADMINISTRATIVE_AUTHORIZATION
+}
+
+model DocumentTemplate {
+  id          String      @id @default(uuid())
+  requestType RequestType
+  name        String
+  bodyText    String?
+  storagePath String?
+  originalName String?
+  mimeType    String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([requestType, isActive])
+}
+
+model OfficialMark {
+  id          String   @id @default(uuid())
+  name        String
+  kind        String
+  storagePath String
+  mimeType    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([kind, isActive])
+}
+
+enum PaymentProvider {
+  MVOLA
+  ORANGE_MONEY
+  AIRTEL_MONEY
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum AppointmentStatus {
+  PENDING
+  BOOKED
+  CANCELLED
+  COMPLETED
+}
+
+enum NotificationChannel {
+  SMS
+  EMAIL
+  WHATSAPP
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+enum MethodeClassification {
+  AUTOMATIQUE
+  IA
+  MANUELLE
+}
+
+model User {
+  id                    String                @id @default(uuid())
+  email                 String                @unique
+  nom                   String?
+  phone                 String?               @unique
+  cin                  String?               @unique
+  passwordHash          String?
+  role                 RoleUtilisateur       @default(CITIZEN)
+  locale               String                @default("fr")
+  status               UserStatus            @default(PENDING_VERIFICATION)
+  isTwoFactorEnabled   Boolean               @default(false)
+  lastLoginAt          DateTime?
+  roles                UserRole[]
+  requetes             RequeteUtilisateur[]
+  actionsAudit         JournalAudit[]
+  requests             ServiceRequest[]
+  requestStatusChanges RequestStatusHistory[]
+  notifications        Notification[]
+  payments             Payment[]
+  appointments         Appointment[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+}
+
+model Role {
+  id          String    @id @default(uuid())
+  name        RoleName  @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  users       UserRole[]
+}
+
+model UserRole {
+  id      String @id @default(uuid())
+  userId  String
+  roleId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role    Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+}
+
+model PrefectureService {
+  id          String          @id @default(uuid())
+  code        String          @unique
+  nameFr      String
+  nameMg      String
+  description String?
+  isActive    Boolean         @default(true)
+  requests    ServiceRequest[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model ServiceRequest {
+  id          String        @id @default(uuid())
+  userId      String
+  serviceId   String
+  type        RequestType
+  status      RequestStatus @default(DRAFT)
+  title       String?
+  description String?
+  formData    Json?
+  fee         Decimal?      @db.Decimal(10, 2)
+  adminHidden Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service     PrefectureService     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  attachments RequestAttachment[]
+  history    RequestStatusHistory[]
+  payments   Payment[]
+  appointments Appointment[]
+}
+
+model RequestAttachment {
+  id           String        @id @default(uuid())
+  requestId    String
+  label        String?
+  originalName String
+  storagePath  String
+  mimeType     String?
+  size         Int?
+  createdAt    DateTime      @default(now())
+  request      ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+}
+
+model RequestStatusHistory {
+  id          String        @id @default(uuid())
+  requestId   String
+  status      RequestStatus
+  comment     String?
+  changedById String?
+  createdAt   DateTime      @default(now())
+  request     ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  changedBy   User?         @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([requestId, createdAt])
+}
+
+model Notification {
+  id        String             @id @default(uuid())
+  userId    String
+  channel   NotificationChannel
+  status    NotificationStatus @default(PENDING)
+  title     String
+  message   String
+  metadata  Json?
+  sentAt    DateTime?
+  createdAt DateTime           @default(now())
+
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id         String          @id @default(uuid())
+  requestId  String
+  userId     String
+  provider   PaymentProvider
+  amount     Decimal         @db.Decimal(10, 2)
+  phone      String
+  status     PaymentStatus   @default(PENDING)
+  externalId String?         @unique
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  request    ServiceRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([userId, status])
+}
+model Appointment {
+  id         String            @id @default(uuid())
+  userId     String
+  requestId  String?
+  startsAt   DateTime
+  endsAt     DateTime
+  office     String            @default("Guichet général")
+  status     AppointmentStatus @default(BOOKED)
+  notes      String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  request    ServiceRequest?   @relation(fields: [requestId], references: [id], onDelete: SetNull)
+
+  @@index([startsAt, status])
+  @@index([userId, status])
+}
+
+model Categorie {
+  id          String                   @id @default(uuid())
+  libelle     String                   @unique
+  description String?
+  motsCles    String[]
+  documents   DocumentAdministratif[]
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+}
+
+model DocumentAdministratif {
+  id                    String                 @id @default(uuid())
+  titre                 String
+  reference             String?
+  contenuTexte          String?
+  type                  TypeDocument
+  date                  DateTime?
+  serviceEmetteur       String?
+  auteurEmetteur        String?
+  metadonnees           Json                   @default("{}")
+  cheminFichier         String
+  nomFichierOriginal    String?
+  mimeType              String?
+  tailleFichier         Int?
+  statut                StatutDocument         @default(BROUILLON)
+  etapeTraitement       String?
+  erreurTraitement      String?
+  scoreClassification   Float?
+  methodeClassification MethodeClassification?
+  categorieId           String?
+  categorie             Categorie?             @relation(fields: [categorieId], references: [id])
+  chunks                Chunk[]
+  audits                JournalAudit[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@index([type])
+  @@index([date])
+  @@index([categorieId])
+  @@index([statut])
+  @@index([reference])
+  @@index([serviceEmetteur])
+}
+
+model Chunk {
+  id          String                 @id @default(uuid())
+  documentId  String
+  contenu     String
+  position    Int
+  metadonnees Json                   @default("{}")
+  page        Int?
+  embeddingModel String?
+  embeddingDimension Int?
+  document    DocumentAdministratif  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  sources     RequeteSource[]
+
+  @@unique([documentId, position])
+  @@index([documentId])
+}
+
+model RequeteUtilisateur {
+  id              String         @id @default(uuid())
+  texte           String
+  date            DateTime       @default(now())
+  utilisateurId   String?
+  utilisateur     User?          @relation(fields: [utilisateurId], references: [id])
+  reponseGeneree  String?
+  sources         RequeteSource[]
+  
+  @@index([date])
+  @@index([utilisateurId])
+}
+
+model RequeteSource {
+  id         String             @id @default(uuid())
+  requeteId  String
+  chunkId    String
+  score      Float?             // similarité
+  requete    RequeteUtilisateur @relation(fields: [requeteId], references: [id], onDelete: Cascade)
+  chunk      Chunk              @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  @@unique([requeteId, chunkId])
+}
+
+model JournalAudit {
+  id            String                 @id @default(uuid())
+  utilisateurId String?
+  documentId    String?
+  action        String
+  details       Json                   @default("{}")
+  dateAction    DateTime               @default(now())
+  utilisateur   User?                  @relation(fields: [utilisateurId], references: [id], onDelete: SetNull)
+  document      DocumentAdministratif? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([dateAction])
+  @@index([utilisateurId])
+  @@index([documentId])
+}

@@ -1,0 +1,18 @@
+erDiagram
+  USER ||--o{ SERVICE_REQUEST : depose
+  USER ||--o{ NOTIFICATION : recoit
+  USER ||--o{ APPOINTMENT : reserve
+  USER ||--o{ PAYMENT : effectue
+  SERVICE ||--o{ SERVICE_REQUEST : concerne
+  SERVICE_REQUEST ||--o{ REQUEST_ATTACHMENT : contient
+  SERVICE_REQUEST ||--o{ REQUEST_STATUS_HISTORY : historise
+  SERVICE_REQUEST ||--o{ APPOINTMENT : planifie
+  SERVICE_REQUEST ||--o{ PAYMENT : regle
+  DOCUMENT ||--o{ CHUNK : decoupe
+  DOCUMENT }o--o| CATEGORY : classe
+  CHUNK ||--o{ RAG_SOURCE : source
+  RAG_QUERY ||--o{ RAG_SOURCE : utilise
+  USER { string id string email string role }
+  SERVICE_REQUEST { string id string type string status json formData decimal fee boolean adminHidden }
+  DOCUMENT_TEMPLATE { string id string requestType string name boolean isActive }
+  PLATFORM_SETTING { string key string value }

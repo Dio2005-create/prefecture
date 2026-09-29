@@ -1,0 +1,18 @@
+erDiagram
+  User { UUID id PK VARCHAR email UK VARCHAR nom VARCHAR phone UK VARCHAR cin UK ENUM role ENUM status }
+  ServiceRequest { UUID id PK UUID userId FK UUID serviceId FK ENUM type ENUM status JSON formData DECIMAL fee BOOLEAN adminHidden }
+  PrefectureService { UUID id PK VARCHAR code UK VARCHAR nameFr BOOLEAN isActive }
+  RequestAttachment { UUID id PK UUID requestId FK VARCHAR originalName TEXT storagePath }
+  Appointment { UUID id PK UUID userId FK UUID requestId FK TIMESTAMP startsAt TIMESTAMP endsAt ENUM status }
+  Notification { UUID id PK UUID userId FK VARCHAR title TEXT message ENUM status }
+  Payment { UUID id PK UUID requestId FK UUID userId FK ENUM provider DECIMAL amount VARCHAR phone ENUM status }
+  DocumentTemplate { UUID id PK ENUM requestType VARCHAR name BOOLEAN isActive }
+  PlatformSetting { UUID id PK VARCHAR key UK VARCHAR value }
+  User ||--o{ ServiceRequest : userId
+  PrefectureService ||--o{ ServiceRequest : serviceId
+  ServiceRequest ||--o{ RequestAttachment : requestId
+  User ||--o{ Appointment : userId
+  ServiceRequest ||--o{ Appointment : requestId
+  User ||--o{ Notification : userId
+  User ||--o{ Payment : userId
+  ServiceRequest ||--o{ Payment : requestId

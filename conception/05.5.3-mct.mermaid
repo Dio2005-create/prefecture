@@ -1,0 +1,13 @@
+flowchart TD
+  E1((Utilisateur se connecte)) --> T1[Valider session]
+  E2((Citoyen soumet dossier)) --> T2[Valider champs et pièces]
+  T2 -->|OK| T3[Créer ServiceRequest]
+  T3 --> T4[Notifier réception]
+  T4 --> T5[Proposer paiement ou rendez-vous]
+  E3((Admin ouvre dossier)) --> T6[Instruire dossier]
+  T6 -->|Complément| T7[Notifier informations nécessaires]
+  T6 -->|Validation| T8[Livrer document]
+  T6 -->|Rejet| T9[Notifier rejet]
+  E4((Superadmin crée admin)) --> T10[Créer compte ADMIN]
+  E5((Question IA)) --> T11[Rechercher sources]
+  T11 --> T12[Générer réponse claire]

@@ -1,0 +1,17 @@
+flowchart LR
+  C[Citoyen] -->|Connexion / profil| F[Front-Office React]
+  F -->|Créer une demande| API[API NestJS]
+  API --> R[(PostgreSQL)]
+  F -->|Pièces jointes| U[(Stockage uploads)]
+  API --> N[Notifications]
+  API --> P[Paiement statique]
+  A[Administrateur] -->|Instruction| B[Back-Office]
+  B --> API
+  SA[Superadmin] -->|Créer admin / configurer| B
+  API --> D[Documents et modèles]
+  D --> Q[Qdrant]
+  F -->|Question| AI[Assistant IA]
+  AI --> Q
+  AI --> API
+  API -->|Rendez-vous empreinte| N
+  N -->|Notification| C
