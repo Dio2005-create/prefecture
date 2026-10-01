@@ -6,10 +6,12 @@ import PDFDocument = require('pdfkit');
 import { Prisma } from '@prisma/client';
 import { existsSync } from 'node:fs';
 import { createReadStream } from 'node:fs';
+import { join } from 'node:path';
 import { RequestType } from '@prisma/client';
 import { PaymentProvider } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { getRequestRequirements } from './request-requirements';
+import { requestModels } from './request-models';
 
 const defaultFees: Record<RequestType, number> = {
   BIRTH_CERTIFICATE: 5000,
@@ -31,6 +33,7 @@ const defaultFees: Record<RequestType, number> = {
   ACCREDITATION: 20000,
   ADMINISTRATIVE_AUTHORIZATION: 10000,
 };
+const SIMULATED_PAYMENT_PIN = '1234';
 
 @Injectable()
 export class RequestsService {
@@ -40,6 +43,14 @@ export class RequestsService {
     const requirements = getRequestRequirements(type);
     if (!requirements) throw new NotFoundException('Type de demande introuvable');
     return requirements;
+  }
+
+  getModelPdf(type: string) {
+    if (!Object.values(RequestType).includes(type as RequestType)) throw new NotFoundException('Modèle de démarche introuvable');
+    const model = requestModels[type as RequestType];
+    const path = join(process.env.REQUEST_MODELS_DIR ?? join(process.cwd(), '../../modeles_pdf'), model.pdfFile);
+    if (!existsSync(path)) throw new NotFoundException('Le modèle PDF de cette démarche est indisponible');
+    return { path, filename: model.pdfFile };
   }
 
   async listAvailableServices() {
@@ -76,7 +87,7 @@ export class RequestsService {
     userId: string,
     data: CreateRequestDto,
     attachmentFiles: Array<{ label: string; path: string; originalname: string; mimetype?: string; size?: number }> = [],
-    payment?: { provider: PaymentProvider; phone: string; confirmedAmount: number },
+    payment?: { provider: PaymentProvider; phone: string; confirmedAmount: number; simulationPin: string },
   ) {
     this.validateFormData(data.type, data.formData ?? {});
     const service = await this.prisma.prefectureService.findUnique({ where: { id: data.serviceId } });
@@ -87,6 +98,9 @@ export class RequestsService {
     if (payment && payment.confirmedAmount !== fee) throw new BadRequestException('Le tarif a changé. Vérifiez le montant avant de confirmer à nouveau.');
     if (fee > 0 && !payment) throw new BadRequestException('Un paiement simulé est requis pour cette démarche');
     if (payment) {
+      if (!/^\d{4}$/.test(payment.simulationPin) || payment.simulationPin !== SIMULATED_PAYMENT_PIN) {
+        throw new BadRequestException('Code PIN de simulation incorrect. Utilisez le code de démonstration affiché.');
+      }
       const prefixes: Partial<Record<PaymentProvider, string[]>> = {
         MVOLA: ['034', '038', '036'],
         AIRTEL_MONEY: ['033', '035'],
@@ -140,7 +154,7 @@ export class RequestsService {
 
   async createMultipart(
     userId: string,
-    data: { serviceId: string; type: RequestType; title?: string; description?: string; formData?: Record<string, unknown>; attachmentLabels?: string[]; paymentConfirmed: boolean; paymentProvider?: PaymentProvider; paymentPhone?: string; confirmedAmount?: number },
+    data: { serviceId: string; type: RequestType; title?: string; description?: string; formData?: Record<string, unknown>; attachmentLabels?: string[]; paymentConfirmed: boolean; paymentProvider?: PaymentProvider; paymentPhone?: string; confirmedAmount?: number; simulationPin?: string },
     files: Array<{ path: string; originalname: string; mimetype?: string; size?: number }>,
   ) {
     if (data.paymentConfirmed !== true) throw new BadRequestException('La confirmation du paiement est obligatoire avant l’envoi du dossier');
@@ -176,7 +190,7 @@ export class RequestsService {
       data as CreateRequestDto,
       files.map((file, index) => ({ ...file, label: labels[index] })),
       data.confirmedAmount && data.paymentProvider && data.paymentPhone
-        ? { confirmedAmount: data.confirmedAmount, provider: data.paymentProvider, phone: data.paymentPhone }
+        ? { confirmedAmount: data.confirmedAmount, provider: data.paymentProvider, phone: data.paymentPhone, simulationPin: data.simulationPin ?? '' }
         : undefined,
     );
     return this.findById(created.id, { id: userId });
@@ -292,17 +306,20 @@ export class RequestsService {
       };
       const fieldLabels: Record<string, string> = {
         nom: 'Nom', prenom: 'Prénom', cin: 'CIN', adresse: 'Adresse', motif: 'Motif',
+        nomDemandeur: 'Nom et prénoms du demandeur', adresseDemandeur: 'Adresse du demandeur', cinDemandeur: 'CIN du demandeur', lienAvecPersonne: 'Lien avec la personne concernée', anneeNumeroActe: 'Année / numéro de l’acte',
         dateNaissance: 'Date de naissance', lieuNaissance: 'Lieu de naissance', nomPere: 'Nom du père',
-        nomMere: 'Nom de la mère', adresseTerrain: 'Adresse du terrain', surface: 'Surface (m²)',
+        nomMere: 'Nom de la mère', dateDelivranceCin: 'Date de délivrance de la CIN', lieuDelivranceCin: 'Lieu de délivrance de la CIN', adresseActuelle: 'Adresse actuelle', lotLieuDit: 'Lot / lieu-dit', adresseTerrain: 'Adresse du terrain', surface: 'Surface (m²)',
         natureProjet: 'Nature du projet', referenceParcelle: 'Référence parcelle', nomEntreprise: 'Entreprise',
-        activite: 'Activité', representant: 'Représentant', immatriculation: 'Immatriculation',
-        marqueModele: 'Marque / modèle', objetPerdu: 'Objet perdu', lieuPerte: 'Lieu de perte',
+        activite: 'Activité', representant: 'Représentant', immatriculation: 'Immatriculation', profession: 'Profession', telephone: 'Téléphone', cinNif: 'CIN / NIF',
+        marqueModele: 'Marque / type du véhicule', numeroChassis: 'Numéro de châssis', ancienneCarteGrise: 'Ancienne carte grise', puissanceFiscale: 'Puissance fiscale', superficie: 'Superficie approximative', formeJuridique: 'Forme juridique',
+        objetPerdu: 'Objet perdu', typeDocument: 'Document perdu', lieuPerte: 'Lieu de perte', lieuCirconstances: 'Lieu / circonstances',
         datePerte: 'Date de perte', document: 'Document', objet: 'Objet', lieu: 'Lieu',
         dateEvenement: 'Date de l’événement', urgence: 'Urgence', nomAssociation: 'Association / ONG',
-        president: 'Président', objetSocial: 'Objet social', siege: 'Siège', membres: 'Membres',
+        president: 'Président', nomPresident: 'Nom du président', cinPresident: 'CIN du président', adressePresident: 'Adresse du président', telephonePresident: 'Téléphone du président', sigle: 'Sigle', objetSocial: 'Objet social', siege: 'Siège', membres: 'Membres',
         nomEvenement: 'Événement', organisateur: 'Organisateur', dateDebut: 'Date de début',
-        dateFin: 'Date de fin', participants: 'Participants', nomStructure: 'Structure',
-        nomDemandeur: 'Demandeur', profession: 'Profession', paysOrigine: 'Pays d’origine',
+        nomOrganisateur: 'Nom et prénoms de l’organisateur', cinOrganisateur: 'CIN de l’organisateur', heureDebutFin: 'Heure de début / fin', nombreSignatures: 'Nombre de signatures à légaliser', dateFin: 'Date de fin', participants: 'Participants', nomStructure: 'Structure',
+        natureAutorisation: 'Nature de l’autorisation demandée',
+        paysOrigine: 'Pays d’origine',
       };
       const formData = request.formData && typeof request.formData === 'object' && !Array.isArray(request.formData)
         ? request.formData as Record<string, unknown>

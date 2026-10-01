@@ -1,10 +1,11 @@
 FROM node:22-alpine AS build
 WORKDIR /app
-COPY package*.json ./
+COPY apps/backend/package*.json ./
 RUN npm install
-COPY tsconfig.json nest-cli.json ./
-COPY prisma ./prisma
-COPY src ./src
+COPY apps/backend/tsconfig.json apps/backend/nest-cli.json ./
+COPY apps/backend/prisma ./prisma
+COPY apps/backend/src ./src
+COPY modeles_pdf ./modeles_pdf
 RUN npm run prisma:generate
 RUN npm run build
 
@@ -16,6 +17,7 @@ RUN npm install --omit=dev
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/modeles_pdf ./modeles_pdf
 COPY --from=build /app/dist ./dist
 EXPOSE 3000
-CMD ["npm", "run", "start"]
+CMD ["npm", "run", "start:prod"]

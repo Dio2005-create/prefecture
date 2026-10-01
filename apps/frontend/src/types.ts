@@ -74,7 +74,7 @@ export interface RequestAttachmentRequirement {
 }
 
 export interface RequestRequirements {
-  fields: Array<{ name: string; label: string }>;
+  fields: Array<{ name: string; label: string; type: 'text' | 'textarea' | 'number' | 'date'; required: boolean }>;
   attachments: RequestAttachmentRequirement[];
 }
 
@@ -107,8 +107,23 @@ export interface SearchHit {
 
 export interface RagResponse {
   id: string;
+  conversationId: string;
   reponse: string;
   sources: SearchHit[];
+}
+
+export interface ChatHistoryMessage {
+  id: string;
+  texte: string;
+  reponseGeneree?: string | null;
+  date: string;
+}
+
+export interface ChatConversation {
+  id: string;
+  titre: string;
+  updatedAt: string;
+  messages: ChatHistoryMessage[];
 }
 
 export interface PaginatedDocuments {

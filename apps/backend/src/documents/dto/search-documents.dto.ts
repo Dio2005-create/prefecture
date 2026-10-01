@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 
 export class SearchDocumentsDto {
   @IsString()
@@ -9,4 +9,8 @@ export class SearchDocumentsDto {
   @Min(1)
   @Max(20)
   topK = 5;
+
+  @IsOptional()
+  @IsUUID()
+  conversationId?: string;
 }

@@ -1,7 +1,7 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Bot, Check, ChevronRight, CircleHelp, History, Languages, MessageCircle, Plus, Search, Send, ShieldCheck, Sparkles, UserRound, X } from 'lucide-react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { Bot, Check, ChevronRight, CircleHelp, History, Languages, MessageCircle, Pencil, Plus, Search, Send, ShieldCheck, Sparkles, Trash2, UserRound, X } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ragService, searchService } from '../services/api';
 import { ErrorState, PageIntro } from '../components/ui';
 import type { RagResponse, SearchHit } from '../types';
@@ -19,24 +19,47 @@ const citizenSuggestions = [
 function ChatAssistant({ staff = false }: { staff?: boolean }) {
 	const [draft, setDraft] = useState('');
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
+	const [conversationId, setConversationId] = useState<string | null>(null);
 	const [showHistory, setShowHistory] = useState(false);
+	const [editingConversationId, setEditingConversationId] = useState<string | null>(null);
+	const [editingTitle, setEditingTitle] = useState('');
+	const queryClient = useQueryClient();
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const mutation = useMutation({
-		mutationFn: (question: string) => ragService.ask(question),
+		mutationFn: ({ question, activeId }: { question: string; activeId: string | null }) => ragService.ask(question, 5, activeId ?? undefined),
 		onSuccess: (answer, question) => {
+			setConversationId(answer.conversationId);
 			setMessages((current) => [...current, { id: `${Date.now()}-assistant`, role: 'assistant', text: answer.reponse, sources: answer.sources }]);
+			void queryClient.invalidateQueries({ queryKey: ['rag-history'] });
 			window.setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 0);
 		},
 		onError: () => setMessages((current) => [...current, { id: `${Date.now()}-error`, role: 'assistant', text: 'Je rencontre un problème temporaire. Réessayez dans un instant.' }]),
 	});
 	const historyQuery = useQuery({ queryKey: ['rag-history'], queryFn: ragService.history, enabled: showHistory });
+	const renameMutation = useMutation({
+		mutationFn: ({ id, titre }: { id: string; titre: string }) => ragService.rename(id, titre),
+		onSuccess: () => {
+			setEditingConversationId(null);
+			void queryClient.invalidateQueries({ queryKey: ['rag-history'] });
+		},
+	});
+	const deleteMutation = useMutation({
+		mutationFn: (id: string) => ragService.remove(id),
+		onSuccess: (_result, deletedId) => {
+			void queryClient.invalidateQueries({ queryKey: ['rag-history'] });
+			if (conversationId === deletedId) {
+				setConversationId(null);
+				setMessages([]);
+			}
+		},
+	});
 
 	const sendMessage = (value = draft) => {
 		const question = value.trim();
 		if (!question || mutation.isPending) return;
 		setMessages((current) => [...current, { id: `${Date.now()}-user`, role: 'user', text: question }]);
 		setDraft('');
-		mutation.mutate(question);
+		mutation.mutate({ question, activeId: conversationId });
 	};
 
 	const submit = (event: FormEvent) => { event.preventDefault(); sendMessage(); };
@@ -57,7 +80,7 @@ function ChatAssistant({ staff = false }: { staff?: boolean }) {
 			<section className="chat-card">
 				<header className="chat-header">
 					<div className="chat-identity"><span className="chat-avatar"><Sparkles size={18} /></span><div><strong>Assistant e-Préfecture</strong><small><span className="status-dot" /> Répond en français ou en malgache</small></div></div>
-					<div className="chat-header-actions"><button className="icon-button" type="button" onClick={() => setShowHistory(true)} aria-label="Voir l’historique" title="Historique des conversations"><History size={17} /></button><button className="icon-button chat-new-button" type="button" onClick={() => { setMessages([]); setDraft(''); }} aria-label="Nouvelle conversation" title="Nouvelle conversation"><Plus size={18} /></button></div>
+					<div className="chat-header-actions"><button className="icon-button" type="button" onClick={() => setShowHistory(true)} aria-label="Voir l’historique" title="Historique des conversations"><History size={17} /></button><button className="icon-button chat-new-button" type="button" onClick={() => { setConversationId(null); setMessages([]); setDraft(''); }} aria-label="Nouvelle conversation" title="Nouvelle conversation"><Plus size={18} /></button></div>
 				</header>
 				<div className="chat-messages" ref={scrollRef}>
 					{messages.length === 0 && <div className="chat-empty"><span className="chat-empty-icon"><Bot size={27} /></span><h2>Bonjour, comment puis-je vous aider ?</h2><p>Je vous guide uniquement pour les démarches de la préfecture.</p><div className="chat-capabilities"><span><Languages size={14} /> FR · MG</span><span><ShieldCheck size={14} /> Réponses sécurisées</span></div></div>}
@@ -68,7 +91,12 @@ function ChatAssistant({ staff = false }: { staff?: boolean }) {
 			</section>
 			<aside className="assistant-help-card"><div className="help-heading"><span className="help-icon"><Sparkles size={17} /></span><div><h2>Aide rapide</h2><p>Commencez avec une question fréquente.</p></div></div><div className="suggestion-list">{citizenSuggestions.map(({ label, icon: Icon }) => <button className="suggestion-card" key={label} type="button" onClick={() => sendMessage(label)} disabled={mutation.isPending}><span className="suggestion-card-icon"><Icon size={17} /></span><span>{label}</span><ChevronRight size={16} /></button>)}</div><div className="help-note"><ShieldCheck size={16} /><p>Vos échanges restent liés à votre session et servent uniquement à vous orienter.</p></div></aside>
 		</div>
-		{showHistory && <div className="history-overlay" role="presentation" onClick={() => setShowHistory(false)}><aside className="history-drawer" role="dialog" aria-modal="true" aria-labelledby="history-title" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Conversations</p><h2 id="history-title">Historique du chat</h2></div><button className="icon-button" type="button" onClick={() => setShowHistory(false)} aria-label="Fermer l’historique"><X size={17} /></button></header>{historyQuery.isLoading ? <p className="history-empty">Chargement de l’historique...</p> : historyQuery.data?.length ? <div className="history-list">{historyQuery.data.map((item) => <button className="history-item" type="button" key={item.id} onClick={() => { setDraft(item.texte); setShowHistory(false); }}><span className="history-item-icon"><MessageCircle size={15} /></span><span><strong>{item.texte}</strong><small>{new Date(item.date).toLocaleString('fr-FR')}</small></span><ChevronRight size={15} /></button>)}</div> : <p className="history-empty">Aucune conversation enregistrée.</p>}</aside></div>}
+		{showHistory && <div className="history-overlay" role="presentation" onClick={() => setShowHistory(false)}><aside className="history-drawer" role="dialog" aria-modal="true" aria-labelledby="history-title" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Conversations</p><h2 id="history-title">Historique du chat</h2></div><button className="icon-button" type="button" onClick={() => setShowHistory(false)} aria-label="Fermer l’historique"><X size={17} /></button></header>{historyQuery.isError ? <p className="history-empty">Impossible de charger l’historique. Réessayez après avoir vérifié la connexion au service.</p> : historyQuery.isLoading ? <p className="history-empty">Chargement de l’historique...</p> : historyQuery.data?.length ? <div className="history-list">{historyQuery.data.map((item) => <div className="history-item" key={item.id}>
+					{editingConversationId === item.id ? <form className="history-edit-form" onSubmit={(event) => { event.preventDefault(); renameMutation.mutate({ id: item.id, titre: editingTitle }); }}><input autoFocus maxLength={80} value={editingTitle} onChange={(event) => setEditingTitle(event.target.value)} aria-label="Nouveau titre de la discussion" /><button className="icon-button" type="submit" disabled={!editingTitle.trim() || renameMutation.isPending} aria-label="Enregistrer le titre"><Check size={15} /></button><button className="icon-button" type="button" onClick={() => setEditingConversationId(null)} aria-label="Annuler"><X size={15} /></button></form> : <>
+						<button className="history-item-open" type="button" onClick={() => { setConversationId(item.id); setMessages(item.messages.flatMap((entry) => { const restored: ChatMessage[] = [{ id: `${entry.id}-user`, role: 'user', text: entry.texte }]; if (entry.reponseGeneree) restored.push({ id: `${entry.id}-assistant`, role: 'assistant', text: entry.reponseGeneree }); return restored; })); setDraft(''); setShowHistory(false); window.setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }), 0); }}><span className="history-item-icon"><MessageCircle size={15} /></span><span className="history-item-copy"><strong>{item.titre}</strong><small>{new Date(item.updatedAt).toLocaleString('fr-FR')} · {item.messages.length} échange{item.messages.length > 1 ? 's' : ''}</small></span><ChevronRight size={15} /></button>
+						<div className="history-actions"><button className="icon-button" type="button" onClick={() => { setEditingConversationId(item.id); setEditingTitle(item.titre); }} aria-label={`Renommer ${item.titre}`} title="Renommer"><Pencil size={14} /></button><button className="icon-button history-delete-button" type="button" onClick={() => { if (window.confirm(`Supprimer la discussion « ${item.titre} » et tous ses messages ?`)) deleteMutation.mutate(item.id); }} aria-label={`Supprimer ${item.titre}`} title="Supprimer" disabled={deleteMutation.isPending}><Trash2 size={14} /></button></div>
+					</>}
+				</div>)}</div> : <p className="history-empty">Aucune conversation enregistrée.</p>}</aside></div>}
 	</div>;
 }
 

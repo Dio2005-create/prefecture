@@ -43,17 +43,21 @@ services:
       - qdrant
 
   backend:
-    build: ./apps/backend
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
     environment:
       PORT: 3000
       AI_SERVICE_URL: http://ai-service:8000
       DATABASE_URL: postgresql://archives:archives_dev@postgres:5432/archives
       OLLAMA_URL: http://host.docker.internal:11434
       QDRANT_URL: http://qdrant:6333
+      REQUEST_MODELS_DIR: /app/modeles_pdf
     ports:
       - "3000:3000"
     volumes:
       - ./apps/backend:/app
+      - ./modeles_pdf:/app/modeles_pdf:ro
       - backend_node_modules:/app/node_modules
       - uploads_data:/app/uploads
     depends_on:

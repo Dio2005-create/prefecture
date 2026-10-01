@@ -22,6 +22,13 @@ export class RequestsController {
     return this.requestsService.getRequirements(type);
   }
 
+  @Get('models/:type/pdf')
+  downloadModelPdf(@Param('type') type: string, @Res() response: Response) {
+    const model = this.requestsService.getModelPdf(type);
+    response.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${model.filename}"` });
+    response.sendFile(model.path);
+  }
+
   @Get('fees')
   @Public()
   fees() {
@@ -47,7 +54,7 @@ export class RequestsController {
   @UseInterceptors(FilesInterceptor('attachments', 30, { dest: process.env.UPLOAD_DIR ?? './uploads' }))
   createMultipart(
     @Req() req: { user?: { id: string } },
-    @Body() body: { serviceId: string; type: RequestType; title?: string; description?: string; formData?: string; attachmentLabels?: string; paymentConfirmed?: string; paymentProvider?: string; paymentPhone?: string; confirmedAmount?: string },
+    @Body() body: { serviceId: string; type: RequestType; title?: string; description?: string; formData?: string; attachmentLabels?: string; paymentConfirmed?: string; paymentProvider?: string; paymentPhone?: string; confirmedAmount?: string; simulationPin?: string },
     @UploadedFiles() files: Array<{ path: string; originalname: string; mimetype?: string; size?: number }>,
   ) {
     if (!req.user) throw new BadRequestException('Utilisateur non authentifié');

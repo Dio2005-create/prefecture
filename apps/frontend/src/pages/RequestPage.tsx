@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, RefreshCw, Eye } from 'lucide-react';
 import { prefectureService } from '../services/api';
@@ -42,157 +42,7 @@ const requestLabels: Record<RequestType, string> = {
   ADMINISTRATIVE_AUTHORIZATION: 'Autre autorisation administrative',
 };
 
-type DynamicField = { name: string; label: string; type: 'text' | 'textarea' | 'number' | 'date' | 'select'; placeholder?: string; options?: string[]; required?: boolean };
 type AttachmentRequirement = RequestAttachmentRequirement;
-
-const requestFields: Partial<Record<RequestType, DynamicField[]>> = {
-  BIRTH_CERTIFICATE: [{ name: 'nom', label: 'Nom', type: 'text', required: true }, { name: 'prenoms', label: 'Prénoms', type: 'text', required: true }, { name: 'dateNaissance', label: 'Date de naissance', type: 'date', required: true }, { name: 'lieuNaissance', label: 'Lieu de naissance', type: 'text', required: true }, { name: 'nomPere', label: 'Nom du père', type: 'text', required: true }, { name: 'nomMere', label: 'Nom de la mère', type: 'text', required: true }],
-  RESIDENCE_CERTIFICATE: [{ name: 'nomComplet', label: 'Nom complet', type: 'text', required: true }, { name: 'adresse', label: 'Adresse exacte', type: 'textarea', required: true }, { name: 'dureeResidence', label: 'Durée de résidence', type: 'text', required: true }, { name: 'cin', label: 'Numéro CIN', type: 'text', required: true }],
-  NATIONALITY_CERTIFICATE: [{ name: 'nom', label: 'Nom', type: 'text', required: true }, { name: 'prenoms', label: 'Prénoms', type: 'text', required: true }, { name: 'dateNaissance', label: 'Date de naissance', type: 'date', required: true }, { name: 'lieuNaissance', label: 'Lieu de naissance', type: 'text', required: true }, { name: 'filiation', label: 'Filiation', type: 'textarea', required: true }],
-  CIN_REQUEST: [{ name: 'nom', label: 'Nom', type: 'text', required: true }, { name: 'prenoms', label: 'Prénoms', type: 'text', required: true }, { name: 'dateNaissance', label: 'Date de naissance', type: 'date', required: true }, { name: 'lieuNaissance', label: 'Lieu de naissance', type: 'text', required: true }, { name: 'nomPere', label: 'Nom du père', type: 'text', required: true }, { name: 'nomMere', label: 'Nom de la mère', type: 'text', required: true }],
-  CIN_RENEWAL: [{ name: 'nom', label: 'Nom', type: 'text', required: true }, { name: 'prenoms', label: 'Prénoms', type: 'text', required: true }, { name: 'dateNaissance', label: 'Date de naissance', type: 'date', required: true }, { name: 'cin', label: 'Ancien numéro de CIN', type: 'text', required: true }, { name: 'motif', label: 'Nouvelles informations ou motif de renouvellement', type: 'textarea', required: true }],
-  GOOD_CHARACTER_CERTIFICATE: [{ name: 'nom', label: 'Nom', type: 'text', required: true }, { name: 'prenoms', label: 'Prénoms', type: 'text', required: true }, { name: 'cin', label: 'CIN', type: 'text', required: true }, { name: 'adresse', label: 'Adresse', type: 'textarea', required: true }, { name: 'periode', label: 'Période concernée', type: 'text', required: true }],
-  BUILDING_PERMIT: [{ name: 'nom', label: 'Nom du propriétaire', type: 'text', required: true }, { name: 'cin', label: 'CIN', type: 'text', required: true }, { name: 'adresseTerrain', label: 'Localisation du terrain', type: 'textarea', required: true }, { name: 'natureProjet', label: 'Nature du projet', type: 'textarea', required: true }],
-  LAND_STATUS: [{ name: 'referenceParcelle', label: 'Référence cadastrale ou titre', type: 'text', required: true }, { name: 'adresseTerrain', label: 'Localisation du terrain', type: 'textarea', required: true }],
-  COMMERCIAL_LICENSE: [{ name: 'nom', label: 'Nom du demandeur', type: 'text', required: true }, { name: 'activite', label: 'Nature de l’activité', type: 'text', required: true }, { name: 'adresse', label: 'Adresse du local', type: 'textarea', required: true }],
-  VEHICLE_REGISTRATION: [{ name: 'nom', label: 'Nom du propriétaire', type: 'text', required: true }, { name: 'cin', label: 'CIN du propriétaire', type: 'text', required: true }, { name: 'immatriculation', label: 'Immatriculation', type: 'text', required: true }, { name: 'marqueModele', label: 'Marque et modèle', type: 'text', required: true }],
-  LOSS_DECLARATION: [{ name: 'typeDocument', label: 'Type de document perdu', type: 'text', required: true }, { name: 'circonstances', label: 'Circonstances', type: 'textarea', required: true }, { name: 'datePerte', label: 'Date de perte', type: 'date', required: true }],
-  SIGNATURE_LEGALIZATION: [{ name: 'nom', label: 'Nom du signataire', type: 'text', required: true }, { name: 'prenoms', label: 'Prénoms du signataire', type: 'text', required: true }, { name: 'document', label: 'Nature du document', type: 'text', required: true }],
-  COMPLAINT: [{ name: 'objet', label: 'Objet du signalement', type: 'text', required: true }, { name: 'description', label: 'Description détaillée', type: 'textarea', required: true }],
-  SPECIAL_REQUEST: [{ name: 'objet', label: 'Objet de la demande', type: 'text', required: true }, { name: 'description', label: 'Description', type: 'textarea', required: true }],
-  ASSOCIATION_DECLARATION: [{ name: 'nomAssociation', label: 'Nom de l’association ou ONG', type: 'text', required: true }, { name: 'objetSocial', label: 'Objet social', type: 'textarea', required: true }, { name: 'membresFondateurs', label: 'Membres fondateurs', type: 'textarea', required: true }, { name: 'siege', label: 'Siège', type: 'textarea', required: true }],
-  EVENT_AUTHORIZATION: [{ name: 'natureEvenement', label: 'Nature de l’événement', type: 'text', required: true }, { name: 'dateDebut', label: 'Date', type: 'date', required: true }, { name: 'lieu', label: 'Lieu', type: 'text', required: true }, { name: 'organisateur', label: 'Organisateur', type: 'text', required: true }],
-  ACCREDITATION: [{ name: 'typeAgrement', label: 'Type d’agrément demandé', type: 'text', required: true }, { name: 'nomStructure', label: 'Nom de la structure', type: 'text', required: true }, { name: 'activite', label: 'Activité', type: 'text', required: true }],
-  ADMINISTRATIVE_AUTHORIZATION: [{ name: 'objet', label: 'Objet de l’autorisation', type: 'text', required: true }, { name: 'description', label: 'Description', type: 'textarea', required: true }],
-};
-
-const dynamicFields: Record<RequestType, DynamicField[]> = {
-  BIRTH_CERTIFICATE: [
-    { name: 'nom', label: 'Nom', type: 'text', placeholder: 'Nom complet' },
-    { name: 'prenom', label: 'Prénom', type: 'text', placeholder: 'Prénom' },
-    { name: 'nomPere', label: 'Nom du père', type: 'text' },
-    { name: 'nomMere', label: 'Nom de la mère', type: 'text' },
-    { name: 'cin', label: 'CIN', type: 'text', placeholder: 'Numéro CIN' },
-    { name: 'adresse', label: 'Adresse', type: 'textarea', placeholder: 'Adresse exacte' },
-    { name: 'motif', label: 'Motif', type: 'textarea', placeholder: 'Raison de la demande' },
-  ],
-  RESIDENCE_CERTIFICATE: [
-    { name: 'nom', label: 'Nom', type: 'text' },
-    { name: 'prenom', label: 'Prénom', type: 'text' },
-    { name: 'cin', label: 'CIN', type: 'text' },
-    { name: 'adresse', label: 'Adresse actuelle', type: 'textarea' },
-    { name: 'dateDebut', label: 'Date de résidence', type: 'date' },
-    { name: 'motif', label: 'Motif', type: 'textarea', placeholder: 'Motif de la demande' },
-  ],
-  NATIONALITY_CERTIFICATE: [
-    { name: 'nom', label: 'Nom', type: 'text' },
-    { name: 'prenom', label: 'Prénom', type: 'text' },
-    { name: 'cin', label: 'CIN', type: 'text' },
-    { name: 'adresse', label: 'Adresse', type: 'textarea' },
-    { name: 'paysOrigine', label: 'Pays d’origine', type: 'text' },
-  ],
-  CIN_REQUEST: [
-    { name: 'nom', label: 'Nom', type: 'text' },
-    { name: 'prenom', label: 'Prénom', type: 'text' },
-    { name: 'dateNaissance', label: 'Date de naissance', type: 'date' },
-    { name: 'lieuNaissance', label: 'Lieu de naissance', type: 'text' },
-    { name: 'adresse', label: 'Adresse', type: 'textarea' },
-  ],
-  CIN_RENEWAL: [
-    { name: 'nom', label: 'Nom', type: 'text' },
-    { name: 'prenom', label: 'Prénom', type: 'text' },
-    { name: 'cin', label: 'Numéro de CIN actuel', type: 'text' },
-    { name: 'motif', label: 'Motif du renouvellement', type: 'text' },
-  ],
-  GOOD_CHARACTER_CERTIFICATE: [
-    { name: 'nom', label: 'Nom', type: 'text' },
-    { name: 'prenom', label: 'Prénom', type: 'text' },
-    { name: 'cin', label: 'CIN', type: 'text' },
-    { name: 'profession', label: 'Profession', type: 'text' },
-    { name: 'adresse', label: 'Adresse', type: 'textarea' },
-  ],
-  BUILDING_PERMIT: [
-    { name: 'nom', label: 'Nom du demandeur', type: 'text' },
-    { name: 'cin', label: 'CIN', type: 'text' },
-    { name: 'adresseTerrain', label: 'Adresse du terrain', type: 'textarea' },
-    { name: 'surface', label: 'Surface estimée (m²)', type: 'number' },
-    { name: 'natureProjet', label: 'Nature du projet', type: 'textarea' },
-  ],
-  LAND_STATUS: [
-    { name: 'nom', label: 'Nom du propriétaire', type: 'text' },
-    { name: 'cin', label: 'CIN', type: 'text' },
-    { name: 'adresseTerrain', label: 'Localisation du terrain', type: 'textarea' },
-    { name: 'referenceParcelle', label: 'Référence parcelle', type: 'text' },
-    { name: 'motif', label: 'Objet de la demande', type: 'textarea' },
-  ],
-  COMMERCIAL_LICENSE: [
-    { name: 'nomEntreprise', label: 'Nom de l’entreprise', type: 'text' },
-    { name: 'activite', label: 'Activité', type: 'text' },
-    { name: 'adresse', label: 'Adresse du local', type: 'textarea' },
-    { name: 'representant', label: 'Représentant légal', type: 'text' },
-  ],
-  VEHICLE_REGISTRATION: [
-    { name: 'nom', label: 'Nom du propriétaire', type: 'text' },
-    { name: 'cin', label: 'CIN', type: 'text' },
-    { name: 'immatriculation', label: 'Immatriculation', type: 'text' },
-    { name: 'marqueModele', label: 'Marque / modèle', type: 'text' },
-    { name: 'motif', label: 'Motif', type: 'textarea' },
-  ],
-  LOSS_DECLARATION: [
-    { name: 'nom', label: 'Nom du déclarant', type: 'text' },
-    { name: 'cin', label: 'CIN', type: 'text' },
-    { name: 'objetPerdu', label: 'Objet perdu', type: 'text' },
-    { name: 'lieuPerte', label: 'Lieu de perte', type: 'text' },
-    { name: 'datePerte', label: 'Date de perte', type: 'date' },
-  ],
-  SIGNATURE_LEGALIZATION: [
-    { name: 'nom', label: 'Nom', type: 'text' },
-    { name: 'prenom', label: 'Prénom', type: 'text' },
-    { name: 'document', label: 'Document à légaliser', type: 'text' },
-    { name: 'motif', label: 'Motif', type: 'textarea' },
-  ],
-  COMPLAINT: [
-    { name: 'objet', label: 'Objet du signalement', type: 'text' },
-    { name: 'lieu', label: 'Lieu concerné', type: 'text' },
-    { name: 'dateEvenement', label: 'Date de l’événement', type: 'date' },
-    { name: 'description', label: 'Description détaillée', type: 'textarea' },
-    { name: 'urgence', label: 'Niveau d’urgence', type: 'select', options: ['Faible', 'Moyenne', 'Élevée'] },
-  ],
-  SPECIAL_REQUEST: [
-    { name: 'objet', label: 'Objet de la demande', type: 'text' },
-    { name: 'description', label: 'Détails', type: 'textarea' },
-    { name: 'adresse', label: 'Adresse / localisation', type: 'textarea' },
-  ],
-  ASSOCIATION_DECLARATION: [
-    { name: 'nomAssociation', label: 'Nom de l’association / ONG', type: 'text' },
-    { name: 'president', label: 'Président / représentant', type: 'text' },
-    { name: 'objetSocial', label: 'Objet social', type: 'textarea' },
-    { name: 'siege', label: 'Siège', type: 'textarea' },
-    { name: 'membres', label: 'Nombre approximatif de membres', type: 'number' },
-  ],
-  EVENT_AUTHORIZATION: [
-    { name: 'nomEvenement', label: 'Nom de l’événement', type: 'text' },
-    { name: 'organisateur', label: 'Organisateur', type: 'text' },
-    { name: 'lieu', label: 'Lieu', type: 'text' },
-    { name: 'dateDebut', label: 'Date de début', type: 'date' },
-    { name: 'dateFin', label: 'Date de fin', type: 'date' },
-    { name: 'participants', label: 'Nombre estimé de participants', type: 'number' },
-    { name: 'description', label: 'Description', type: 'textarea' },
-  ],
-  ACCREDITATION: [
-    { name: 'nomStructure', label: 'Nom de la structure', type: 'text' },
-    { name: 'activite', label: 'Activité', type: 'text' },
-    { name: 'representant', label: 'Représentant', type: 'text' },
-    { name: 'adresse', label: 'Adresse', type: 'textarea' },
-    { name: 'motif', label: 'Motif de la demande', type: 'textarea' },
-  ],
-  ADMINISTRATIVE_AUTHORIZATION: [
-    { name: 'objet', label: 'Objet de l’autorisation', type: 'text' },
-    { name: 'nomDemandeur', label: 'Nom du demandeur', type: 'text' },
-    { name: 'adresse', label: 'Adresse', type: 'textarea' },
-    { name: 'motif', label: 'Motif détaillé', type: 'textarea' },
-  ],
-};
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Brouillon', SUBMITTED: 'Reçu', IN_REVIEW: 'En instruction', IN_PROGRESS: 'En instruction',
@@ -255,12 +105,13 @@ export function RequestPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentProvider, setPaymentProvider] = useState<MobileMoneyProvider>('MVOLA');
   const [paymentPhone, setPaymentPhone] = useState('');
+  const [paymentPin, setPaymentPin] = useState('');
   const [paymentValidationError, setPaymentValidationError] = useState('');
   const [requestError, setRequestError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [requestPage, setRequestPage] = useState(1);
   const visibleRequests = requests.slice((requestPage - 1) * 5, requestPage * 5);
-  const formFields = useMemo(() => requestFields[requestType] ?? dynamicFields[requestType] ?? [], [requestType]);
+  const formFields = dynamicRequirements?.fields ?? [];
   const requiredAttachments = dynamicRequirements?.attachments ?? [];
   const requestFee = Number(fees[requestType] ?? 0);
 
@@ -276,6 +127,7 @@ export function RequestPage() {
       setSubmitError('');
       setPaymentModalOpen(false);
       setPaymentPhone('');
+      setPaymentPin('');
       setPaymentValidationError('');
     },
     onError: (error) => setSubmitError(error instanceof Error ? error.message : 'La demande n’a pas pu être envoyée.'),
@@ -295,6 +147,20 @@ export function RequestPage() {
     }
   };
 
+  const downloadRequestModel = async () => {
+    try {
+      const blob = await prefectureService.downloadModelPdf(requestType);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `modele-${requestType.toLowerCase()}.pdf`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : 'Le modèle PDF ne peut pas être téléchargé.');
+    }
+  };
+
   const confirmSimulatedPayment = () => {
     if (loadingFees || feesError || !Number.isFinite(requestFee)) {
       setPaymentValidationError('Le tarif configuré est indisponible. Réessayez après actualisation.');
@@ -302,6 +168,10 @@ export function RequestPage() {
     }
     if (requestFee > 0 && (!/^\d{10}$/.test(paymentPhone) || !mobileMoneyPrefixes[paymentProvider].some((prefix) => paymentPhone.startsWith(prefix)))) {
       setPaymentValidationError(`Saisissez 10 chiffres avec un préfixe valide pour ${paymentProvider === 'MVOLA' ? 'MVola (034, 038, 036)' : paymentProvider === 'AIRTEL_MONEY' ? 'Airtel Money (033, 035)' : 'Orange Money (032, 037)'}.`);
+      return;
+    }
+    if (requestFee > 0 && paymentPin !== '1234') {
+      setPaymentValidationError('Code PIN incorrect. Utilisez le code de démonstration 1234.');
       return;
     }
     setPaymentValidationError('');
@@ -315,6 +185,7 @@ export function RequestPage() {
       paymentConfirmed: true,
       confirmedAmount: requestFee,
       ...(requestFee > 0 ? { paymentProvider, paymentPhone } : {}),
+      ...(requestFee > 0 ? { simulationPin: paymentPin } : {}),
     });
   };
 
@@ -343,10 +214,8 @@ export function RequestPage() {
     const errors: Record<string, string> = {};
     formFields.forEach((field) => {
       const value = formData[field.name]?.trim() ?? '';
-      const required = field.required ?? !['nom', 'prenom', 'prenoms'].includes(field.name);
-      if (required && !value) errors[field.name] = 'Ce champ est obligatoire.';
-      if (value && ['nom', 'prenom', 'prenoms', 'nomPere', 'nomMere'].includes(field.name) && !/^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ '\-]*$/.test(value)) errors[field.name] = 'Utilisez uniquement des lettres.';
-      if (value && field.name.toLowerCase().includes('cin') && !/^\d{12}$/.test(value)) errors[field.name] = 'La CIN doit contenir exactement 12 chiffres.';
+      if (field.required && !value) errors[field.name] = 'Ce champ est obligatoire.';
+      if (value && field.name.toLowerCase().includes('cin') && field.name !== 'cinNif' && !/^\d{12}$/.test(value)) errors[field.name] = 'La CIN doit contenir exactement 12 chiffres.';
     });
     if ((requestType === 'CIN_REQUEST' || requestType === 'CIN_RENEWAL') && formData.dateNaissance) {
       const birthDate = new Date(`${formData.dateNaissance}T00:00:00.000Z`);
@@ -401,7 +270,7 @@ export function RequestPage() {
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={requestLabels[requestType]} />
           </label></section>
 
-          <section className="request-form-section"><h3>Informations demandées</h3><div className="request-form-grid">
+          <section className="request-form-section"><div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}><h3>Informations demandées</h3><button className="button small" type="button" onClick={() => void downloadRequestModel()}><Download size={14} /> Modèle PDF</button></div><div className="request-form-grid">
             {formFields.map((field) => (
               <label className={`request-field ${field.type === 'textarea' ? 'full-width' : ''}`} key={field.name}>
                 {field.label}
@@ -411,26 +280,15 @@ export function RequestPage() {
                     value={formData[field.name] ?? ''}
                     onChange={(e) => { setFormData((prev) => ({ ...prev, [field.name]: e.target.value })); setFieldErrors((prev) => ({ ...prev, [field.name]: '' })); }}
                     rows={3}
-                    placeholder={field.placeholder ?? field.label}
+                    placeholder={field.label}
                   />
-                ) : field.type === 'select' ? (
-                  <select
-                    required={field.required}
-                    value={formData[field.name] ?? ''}
-                    onChange={(e) => { setFormData((prev) => ({ ...prev, [field.name]: e.target.value })); setFieldErrors((prev) => ({ ...prev, [field.name]: '' })); }}
-                  >
-                    <option value="">Choisir</option>
-                    {field.options?.map((option) => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </select>
                 ) : (
                   <input
                     type={field.type}
                     required={field.required}
                     value={formData[field.name] ?? ''}
                     onChange={(e) => { setFormData((prev) => ({ ...prev, [field.name]: e.target.value })); setFieldErrors((prev) => ({ ...prev, [field.name]: '' })); }}
-                    placeholder={field.placeholder ?? field.label}
+                    placeholder={field.label}
                   />
                 )}
                 {fieldErrors[field.name] && <small className="field-warning" role="alert">{fieldErrors[field.name]}</small>}
@@ -471,17 +329,18 @@ export function RequestPage() {
           <p className="eyebrow">Étape de paiement</p>
           <h2 id="payment-title">Confirmer le paiement</h2>
           <p id="payment-description">{requestLabels[requestType]} · {requestFee.toLocaleString('fr-FR')} Ar</p>
-          <p className="payment-demo-notice">Mode démonstration : aucun débit réel n’est effectué. En confirmant, le dossier sera enregistré et transmis à la Préfecture.</p>
+          <p className="payment-demo-notice">Mode démonstration : aucun débit réel n’est effectué. PIN de test : 1234. Le dossier est transmis après validation.</p>
           {requestFee > 0 && <div className="payment-fields">
-            <label className="request-field">Opérateur<select value={paymentProvider} onChange={(event) => { setPaymentProvider(event.target.value as MobileMoneyProvider); setPaymentPhone(''); setPaymentValidationError(''); }}><option value="MVOLA">MVola</option><option value="AIRTEL_MONEY">Airtel Money</option><option value="ORANGE_MONEY">Orange Money</option></select></label>
+            <label className="request-field">Opérateur<select value={paymentProvider} onChange={(event) => { setPaymentProvider(event.target.value as MobileMoneyProvider); setPaymentPhone(''); setPaymentPin(''); setPaymentValidationError(''); }}><option value="MVOLA">MVola</option><option value="AIRTEL_MONEY">Airtel Money</option><option value="ORANGE_MONEY">Orange Money</option></select></label>
             <label className="request-field">Numéro du citoyen (10 chiffres)<input type="tel" inputMode="numeric" autoComplete="tel-national" value={paymentPhone} maxLength={10} placeholder={paymentProvider === 'MVOLA' ? '0340000000' : paymentProvider === 'AIRTEL_MONEY' ? '0330000000' : '0320000000'} onChange={(event) => { setPaymentPhone(event.target.value.replace(/\D/g, '').slice(0, 10)); setPaymentValidationError(''); }} /></label>
+            <label className="request-field">Code PIN de simulation (4 chiffres)<input type="password" inputMode="numeric" autoComplete="one-time-code" value={paymentPin} maxLength={4} onChange={(event) => { setPaymentPin(event.target.value.replace(/\D/g, '').slice(0, 4)); setPaymentValidationError(''); }} /></label>
             <small className="form-hint">Préfixes autorisés : {paymentProvider === 'MVOLA' ? '034, 038 ou 036' : paymentProvider === 'AIRTEL_MONEY' ? '033 ou 035' : '032 ou 037'}.</small>
           </div>}
           {paymentValidationError && <p className="error-message" role="alert">{paymentValidationError}</p>}
           {submitError && <p className="error-message" role="alert">{submitError}</p>}
           <div className="modal-actions">
-            <button className="button" type="button" disabled={mutation.isPending} onClick={() => setPaymentModalOpen(false)}>Annuler</button>
-            <button className="button primary" type="button" disabled={mutation.isPending || loadingFees || feesError || (requestFee > 0 && (!/^\d{10}$/.test(paymentPhone) || !mobileMoneyPrefixes[paymentProvider].some((prefix) => paymentPhone.startsWith(prefix)) ))} onClick={confirmSimulatedPayment}>{mutation.isPending ? 'Confirmation...' : requestFee > 0 ? 'Valider le paiement' : 'Confirmer l’envoi'}</button>
+            <button className="button" type="button" disabled={mutation.isPending} onClick={() => { setPaymentModalOpen(false); setPaymentPin(''); setPaymentValidationError(''); }}>Annuler</button>
+            <button className="button primary" type="button" disabled={mutation.isPending || loadingFees || feesError || (requestFee > 0 && (!/^\d{10}$/.test(paymentPhone) || !mobileMoneyPrefixes[paymentProvider].some((prefix) => paymentPhone.startsWith(prefix)) || !/^\d{4}$/.test(paymentPin) || paymentPin !== '1234'))} onClick={confirmSimulatedPayment}>{mutation.isPending ? 'Confirmation...' : requestFee > 0 ? 'Valider le paiement' : 'Confirmer l’envoi'}</button>
           </div>
         </section></div>}
 
