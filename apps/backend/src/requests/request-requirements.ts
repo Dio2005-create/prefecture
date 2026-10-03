@@ -23,11 +23,11 @@ const cinPair = (key: string, label: string, pairGroup = key, multiple = false) 
 export const requestRequirements: Record<RequestType, RequestRequirements> = {
   BIRTH_CERTIFICATE: {
     fields: [field('nomDemandeur', 'Nom et prénoms du demandeur'), field('cinDemandeur', 'CIN du demandeur'), field('adresseDemandeur', 'Adresse du demandeur', 'textarea'), field('lienAvecPersonne', 'Lien avec la personne concernée'), field('nom', 'Nom de la personne concernée'), field('prenoms', 'Prénoms de la personne concernée'), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('nomPere', 'Nom du père'), field('nomMere', 'Nom de la mère'), field('anneeNumeroActe', 'Année / numéro de l’acte (si connu)', 'text', false)],
-    attachments: [required('certificat-accouchement', 'Certificat d’accouchement ou fiche CSB'), ...cinPair('cin-mere', 'CIN de la mère'), ...cinPair('cin-declarant', 'CIN du déclarant'), optional('livret-famille', 'Livret de famille (si disponible)')],
+    attachments: [...cinPair('cin-demandeur', 'CIN du demandeur')],
   },
   RESIDENCE_CERTIFICATE: {
     fields: [field('nomComplet', 'Nom et prénoms'), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('nomPere', 'Nom du père'), field('nomMere', 'Nom de la mère'), field('cin', 'Numéro CIN'), field('dateDelivranceCin', 'Date de délivrance de la CIN', 'date'), field('lieuDelivranceCin', 'Lieu de délivrance de la CIN'), field('adresse', 'Adresse actuelle', 'textarea'), field('lotLieuDit', 'Lot / lieu-dit')],
-    attachments: [...cinPair('cin-demandeur', 'CIN du demandeur'), required('domicile', 'Justificatif de domicile (facture JIRAMA, quittance ou attestation du propriétaire)')],
+    attachments: [],
   },
   NATIONALITY_CERTIFICATE: {
     fields: [field('nom', 'Nom'), field('prenoms', 'Prénoms'), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('nomPere', 'Nom du père'), field('nomMere', 'Nom de la mère'), field('cin', 'Numéro CIN'), field('dateDelivranceCin', 'Date de délivrance de la CIN', 'date'), field('adresseActuelle', 'Adresse actuelle', 'textarea')],
@@ -35,7 +35,7 @@ export const requestRequirements: Record<RequestType, RequestRequirements> = {
   },
   CIN_REQUEST: {
     fields: [field('nom', 'Nom et prénoms'), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('nomPere', 'Nom du père'), field('nomMere', 'Nom de la mère'), field('adresse', 'Adresse actuelle', 'textarea'), field('profession', 'Profession'), field('telephone', 'Téléphone')],
-    attachments: [required('acte-naissance', 'Acte de naissance certifié de moins d’un an'), required('residence', 'Certificat de résidence récent (moins de 3 mois)'), required('photos', 'Photos d’identité', { multiple: true, minFiles: 2 }), required('situation-familiale-parents', 'Déclaration de situation familiale des parents')],
+    attachments: [required('acte-naissance', 'Acte de naissance (moins d’un an)'), required('residence', 'Certificat de résidence (moins de 3 mois)'), required('photos', 'Photos d’identité', { multiple: true, minFiles: 2 })],
   },
   CIN_RENEWAL: {
     fields: [field('nom', 'Nom et prénoms'), field('cin', 'Ancien numéro de CIN'), field('dateDelivranceCin', 'Date de délivrance de l’ancienne CIN', 'date'), field('dateNaissance', 'Date de naissance', 'date'), field('adresse', 'Adresse actuelle', 'textarea'), field('motif', 'Motif (usure, perte ou autre)', 'textarea')],
@@ -47,7 +47,7 @@ export const requestRequirements: Record<RequestType, RequestRequirements> = {
   },
   BUILDING_PERMIT: {
     fields: [field('nom', 'Nom et prénoms / raison sociale'), field('cinNif', 'CIN / NIF'), field('adresse', 'Adresse', 'textarea'), field('telephone', 'Téléphone'), field('natureProjet', 'Nature du projet', 'textarea'), field('adresseTerrain', 'Localisation du terrain', 'textarea'), field('referenceParcelle', 'Références cadastrales / titre'), field('surface', 'Surface à construire (m²)', 'number')],
-    attachments: [required('situation-juridique', 'Certificat de situation juridique (moins de 3 mois)'), required('plan-topographique', 'Plan topographique avec coordonnées Laborde'), required('plan-masse', 'Plan de masse'), required('plan-projet', 'Plan du projet'), required('demande-alignement', 'Demande d’alignement'), required('pv-alignement', 'PV d’alignement'), required('propriete', 'Titre de propriété ou justificatif de droit d’usage')],
+    attachments: [required('situation-juridique', 'Certificat de situation juridique (moins de 3 mois)'), required('plan-topographique', 'Plan topographique'), required('plan-masse', 'Plan de masse'), required('plan-projet', 'Plan du projet'), required('demande-alignement', 'Demande d’alignement'), required('propriete', 'Titre de propriété')],
   },
   LAND_STATUS: {
     fields: [field('nom', 'Nom et prénoms'), field('cin', 'Numéro CIN'), field('adresse', 'Adresse', 'textarea'), field('referenceParcelle', 'Références du terrain (titre / cadastre)'), field('adresseTerrain', 'Localisation précise', 'textarea'), field('superficie', 'Superficie approximative'), field('motif', 'Motif de la demande', 'textarea')],
@@ -59,11 +59,11 @@ export const requestRequirements: Record<RequestType, RequestRequirements> = {
   },
   VEHICLE_REGISTRATION: {
     fields: [field('nom', 'Nom et prénoms du propriétaire'), field('cin', 'Numéro CIN'), field('adresse', 'Adresse', 'textarea'), field('marqueModele', 'Marque / type du véhicule'), field('numeroChassis', 'Numéro de châssis'), field('ancienneCarteGrise', 'Ancienne carte grise (si mutation)', 'text', false), field('puissanceFiscale', 'Puissance fiscale')],
-    attachments: [required('carte-grise', 'Ancienne carte grise (si mutation)'), required('facture-vente', 'Facture d’achat ou acte de vente'), required('conformite', 'Certificat de conformité'), required('non-gage', 'Certificat de non-gage (moins de 3 mois)'), ...cinPair('cin-proprietaire', 'CIN du propriétaire'), required('residence', 'Certificat de résidence')],
+    attachments: [optional('carte-grise', 'Ancienne carte grise (si mutation)'), required('facture-vente', 'Facture d’achat ou acte de vente'), required('conformite', 'Certificat de conformité'), required('non-gage', 'Certificat de non-gage'), ...cinPair('cin-proprietaire', 'CIN du propriétaire'), required('residence', 'Certificat de résidence')],
   },
   LOSS_DECLARATION: {
-    fields: [field('nom', 'Nom et prénoms'), field('cin', 'Numéro CIN'), field('adresse', 'Adresse', 'textarea'), field('typeDocument', 'Document perdu'), field('datePerte', 'Date approximative de la perte', 'date'), field('lieuCirconstances', 'Lieu / circonstances', 'textarea')],
-    attachments: [...cinPair('cin-demandeur', 'CIN du demandeur'), required('declaration-commissariat', 'Déclaration de perte au commissariat ou à la gendarmerie (si déjà faite)')],
+    fields: [field('nom', 'Nom et prénoms'), field('cin', 'Numéro CIN'), field('adresse', 'Adresse', 'textarea'), field('materielsPerdus', 'Matériel perdu', 'textarea'), field('datePerte', 'Date approximative de la perte', 'date'), field('lieuCirconstances', 'Lieu / circonstances', 'textarea')],
+    attachments: [...cinPair('cin-demandeur', 'CIN du demandeur')],
   },
   SIGNATURE_LEGALIZATION: {
     fields: [field('nom', 'Nom et prénoms'), field('cin', 'Numéro CIN'), field('adresse', 'Adresse', 'textarea'), field('document', 'Nature du document à légaliser'), field('nombreSignatures', 'Nombre de signatures à légaliser', 'number')],
@@ -75,7 +75,7 @@ export const requestRequirements: Record<RequestType, RequestRequirements> = {
   },
   SPECIAL_REQUEST: {
     fields: [field('nom', 'Nom et prénoms'), field('cin', 'Numéro CIN'), field('adresse', 'Adresse', 'textarea'), field('telephone', 'Téléphone'), field('objet', 'Objet de la demande'), field('description', 'Exposé des motifs / description', 'textarea')],
-    attachments: [required('justificatif', 'Pièces justificatives selon le cas', { multiple: true })],
+    attachments: [optional('justificatif', 'Pièces justificatives selon le cas', { multiple: true })],
   },
   ASSOCIATION_DECLARATION: {
     fields: [field('nomAssociation', 'Dénomination de l’association / ONG'), field('sigle', 'Sigle'), field('objetSocial', 'Objet', 'textarea'), field('siege', 'Siège social', 'textarea'), field('nomPresident', 'Nom du président'), field('cinPresident', 'CIN du président'), field('adressePresident', 'Adresse du président', 'textarea'), field('telephonePresident', 'Téléphone du président')],
@@ -91,7 +91,7 @@ export const requestRequirements: Record<RequestType, RequestRequirements> = {
   },
   ADMINISTRATIVE_AUTHORIZATION: {
     fields: [field('nom', 'Nom et prénoms'), field('cin', 'Numéro CIN'), field('adresse', 'Adresse', 'textarea'), field('telephone', 'Téléphone'), field('natureAutorisation', 'Nature de l’autorisation demandée'), field('description', 'Exposé des motifs', 'textarea')],
-    attachments: [required('justificatifs', 'Pièces justificatives selon le cas', { multiple: true })],
+    attachments: [optional('justificatifs', 'Pièces justificatives selon le cas', { multiple: true })],
   },
 };
 

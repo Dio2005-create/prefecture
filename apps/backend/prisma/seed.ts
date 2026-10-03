@@ -1,5 +1,7 @@
 import { PrismaClient, RequestType, RoleName, RoleUtilisateur, UserStatus } from '@prisma/client';
 import { createHash } from 'node:crypto';
+import { join } from 'node:path';
+import { requestModels } from '../src/requests/request-models';
 
 const prisma = new PrismaClient();
 
@@ -185,35 +187,19 @@ async function seedUsers() {
 }
 
 async function seedDocumentTemplates() {
-  const templates: Array<{ requestType: RequestType; name: string; bodyText: string }> = [
-    ['BIRTH_CERTIFICATE', 'Modèle par défaut - Acte de naissance', 'Le présent acte ou extrait est délivré après vérification du dossier par la Préfecture.'],
-    ['RESIDENCE_CERTIFICATE', 'Modèle par défaut - Certificat de résidence', 'Le présent certificat atteste la résidence déclarée après instruction du dossier.'],
-    ['NATIONALITY_CERTIFICATE', 'Modèle par défaut - Certificat de nationalité', 'Le présent certificat est délivré après vérification des pièces relatives à la nationalité.'],
-    ['CIN_REQUEST', 'Modèle par défaut - Demande de CIN', 'Dossier de première demande de carte d’identité nationale enregistré par la Préfecture.'],
-    ['CIN_RENEWAL', 'Modèle par défaut - Renouvellement de CIN', 'Dossier de renouvellement de carte d’identité nationale enregistré par la Préfecture.'],
-    ['GOOD_CHARACTER_CERTIFICATE', 'Modèle par défaut - Bonne vie et mœurs', 'Le présent certificat est délivré après vérification administrative du dossier.'],
-    ['BUILDING_PERMIT', 'Modèle par défaut - Permis de construire', 'La présente autorisation est délivrée sous réserve du respect des règles applicables aux constructions.'],
-    ['LAND_STATUS', 'Modèle par défaut - Situation foncière', 'La présente attestation reprend les informations foncières vérifiées dans le dossier.'],
-    ['COMMERCIAL_LICENSE', 'Modèle par défaut - Licence commerciale', 'La présente autorisation commerciale est délivrée après instruction du dossier.'],
-    ['VEHICLE_REGISTRATION', 'Modèle par défaut - Immatriculation de véhicule', 'La présente attestation confirme l’enregistrement administratif du véhicule.'],
-    ['LOSS_DECLARATION', 'Modèle par défaut - Déclaration de perte', 'La présente déclaration de perte est enregistrée par la Préfecture.'],
-    ['SIGNATURE_LEGALIZATION', 'Modèle par défaut - Légalisation de signature', 'La signature est légalisée après vérification de l’identité du signataire.'],
-    ['COMPLAINT', 'Modèle par défaut - Signalement ou réclamation', 'Le présent récépissé confirme l’enregistrement du signalement ou de la réclamation.'],
-    ['SPECIAL_REQUEST', 'Modèle par défaut - Demande particulière', 'La présente demande particulière a été enregistrée pour instruction administrative.'],
-    ['ASSOCIATION_DECLARATION', 'Modèle par défaut - Déclaration d’association ou ONG', 'Le présent récépissé confirme le dépôt du dossier de déclaration de l’association ou ONG.'],
-    ['EVENT_AUTHORIZATION', 'Modèle par défaut - Autorisation de manifestation', 'La présente autorisation est délivrée sous réserve du respect des conditions administratives et de sécurité.'],
-    ['ACCREDITATION', 'Modèle par défaut - Agrément', 'La présente décision d’agrément est délivrée après instruction du dossier.'],
-    ['ADMINISTRATIVE_AUTHORIZATION', 'Modèle par défaut - Autorisation administrative', 'La présente autorisation administrative est délivrée après examen des justificatifs fournis.'],
-  ].map(([requestType, name, bodyText]) => ({ requestType: requestType as RequestType, name, bodyText }));
+  const modelDirectory = process.env.REQUEST_MODELS_DIR ?? join(process.cwd(), '../../modeles_pdf');
+  const templates = Object.entries(requestModels).map(([requestType, model]) => ({
+    requestType: requestType as RequestType,
+    name: model.title,
+    storagePath: join(modelDirectory, model.pdfFile),
+    originalName: model.pdfFile,
+    mimeType: 'application/pdf',
+    isActive: true,
+  }));
 
-  for (const template of templates) {
-    await prisma.documentTemplate.createMany({
-      data: template,
-      skipDuplicates: true,
-    });
-  }
-
-  console.log(`✓ ${templates.length} modèles par défaut vérifiés`);
+  await prisma.documentTemplate.deleteMany();
+  await prisma.documentTemplate.createMany({ data: templates });
+  console.log(`✓ ${templates.length} modèles PDF fournis activés`);
 }
 
 async function main() {

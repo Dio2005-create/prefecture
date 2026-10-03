@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { ChatConversation, CitizenRequest, Document, PaginatedDocuments, PrefectureService, RagResponse, RequestRequirements, SearchHit, RequestType } from '../types';
+import type { CitizenRequest, Document, PaginatedDocuments, PrefectureService, RagResponse, RequestRequirements, SearchHit, RequestType } from '../types';
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:3000' });
 api.interceptors.request.use((config) => {
@@ -34,7 +34,7 @@ export const prefectureService = {
   listRequests: async () => (await api.get<CitizenRequest[]>('/requests')).data,
   createRequest: async (payload: { serviceId: string; type: string; title?: string; description?: string; formData?: Record<string, unknown> }) =>
     (await api.post<CitizenRequest>('/requests', payload)).data,
-  createMultipartRequest: async (payload: { serviceId: string; type: string; title?: string; description?: string; formData: Record<string, unknown>; files: Array<{ requirement: string; file: File }>; paymentConfirmed: boolean; paymentProvider?: 'MVOLA' | 'AIRTEL_MONEY' | 'ORANGE_MONEY'; paymentPhone?: string; simulationPin?: string; confirmedAmount: number }) => {
+  createMultipartRequest: async (payload: { serviceId: string; type: string; title?: string; description?: string; formData: Record<string, unknown>; files: Array<{ requirement: string; file: File }>; paymentConfirmed: boolean; paymentProvider?: 'MVOLA' | 'AIRTEL_MONEY' | 'ORANGE_MONEY'; paymentPhone?: string; confirmedAmount: number }) => {
     const form = new FormData();
     form.append('serviceId', payload.serviceId);
     form.append('type', payload.type);
@@ -46,11 +46,9 @@ export const prefectureService = {
     form.append('confirmedAmount', String(payload.confirmedAmount));
     if (payload.paymentProvider) form.append('paymentProvider', payload.paymentProvider);
     if (payload.paymentPhone) form.append('paymentPhone', payload.paymentPhone);
-    if (payload.simulationPin) form.append('simulationPin', payload.simulationPin);
     payload.files.forEach((item) => form.append('attachments', item.file));
     return (await api.post<CitizenRequest>('/requests/multipart', form)).data;
   },
-  downloadModelPdf: async (type: RequestType) => (await api.get<Blob>(`/requests/models/${type}/pdf`, { responseType: 'blob' })).data,
   addAttachment: async (requestId: string, file: File) => {
     const form = new FormData();
     form.append('file', file);
@@ -150,9 +148,7 @@ export const searchService = {
 };
 
 export const ragService = {
-  ask: async (query: string, topK = 5, conversationId?: string) =>
-    (await api.post<RagResponse>('/rag/ask', { query, topK, conversationId })).data,
-  history: async () => (await api.get<ChatConversation[]>('/rag/history')).data,
-  rename: async (id: string, titre: string) => (await api.patch(`/rag/history/${id}`, { titre })).data,
-  remove: async (id: string) => (await api.delete(`/rag/history/${id}`)).data,
+  ask: async (query: string, topK = 5) =>
+    (await api.post<RagResponse>('/rag/ask', { query, topK })).data,
+  history: async () => (await api.get<Array<{ id: string; texte: string; reponseGeneree?: string; date: string }>>('/rag/history')).data,
 };

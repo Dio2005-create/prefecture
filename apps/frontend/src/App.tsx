@@ -28,6 +28,7 @@ import { AppointmentsPage } from './pages/AppointmentsPage';
 import { CitizenSettingsPage } from './pages/CitizenSettingsPage';
 import { CitizenProfilePage } from './pages/CitizenProfilePage';
 import { AdminSettingsPage } from './pages/RoleFeaturePages';
+import { PreferencesProvider } from './preferences';
 
 const queryClient = new QueryClient();
 
@@ -35,6 +36,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <PreferencesProvider>
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -95,6 +97,7 @@ export default function App() {
             />
           </Routes>
         </AuthProvider>
+        </PreferencesProvider>
       </BrowserRouter>
     </QueryClientProvider>
   );

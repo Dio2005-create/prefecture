@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../auth';
+import { usePreferences } from '../preferences';
 
 export function LoginPage() {
   const [identifier, setIdentifier] = useState('');
@@ -13,6 +14,7 @@ export function LoginPage() {
   const [cin, setCin] = useState('');
   const [error, setError] = useState(false);
   const { login, register } = useAuth();
+  const { t } = usePreferences();
   const navigate = useNavigate();
 
   const submit = async (event: FormEvent) => {
@@ -60,29 +62,29 @@ export function LoginPage() {
       </div>
       <section className="login-visual">
         <div className="login-visual-inner">
-          <img src="/logoPrefet.jpg" alt="Logo de la préfecture" className="login-logo" />
-          <p className="eyebrow">E-Préfecture d’Ihosy</p>
-          <h2>Un guichet unique pour l’administration.</h2>
+          <img src="/logoPrefet.jpg" alt={t('Logo de la préfecture')} className="login-logo" />
+          <p className="eyebrow">{t('E-Préfecture d’Ihosy')}</p>
+          <h2>{t('Un guichet unique pour l’administration.')}</h2>
           <p className="login-visual-copy">
-            Suivez vos demandes, consultez les services et accédez à votre espace personnel en quelques clics.
+            {t('Suivez vos demandes, consultez les services et accédez à votre espace personnel en quelques clics.')}
           </p>
           <ul className="login-features">
-            <li>Citoyens</li>
-            <li>Administrateurs</li>
-            <li>Dossiers</li>
+            <li>{t('Citoyens')}</li>
+            <li>{t('Administrateurs')}</li>
+            <li>{t('Dossiers')}</li>
           </ul>
         </div>
       </section>
 
       <section className="login-panel">
         <div className={`login-panel-inner${isRegistering ? ' is-registering' : ''}`}>
-          <p className="eyebrow login-eyebrow">{isRegistering ? 'Inscription citoyenne' : 'Connexion'}</p>
-          <h1>{isRegistering ? 'Créer un compte' : 'Bienvenue'}</h1>
-          <p className="login-subtitle">{isRegistering ? 'Créez votre espace pour suivre vos démarches.' : 'Accédez à votre espace citoyen ou administrateur.'}</p>
+          <p className="eyebrow login-eyebrow">{t(isRegistering ? 'Inscription citoyenne' : 'Connexion')}</p>
+          <h1>{t(isRegistering ? 'Créer un compte' : 'Bienvenue')}</h1>
+          <p className="login-subtitle">{t(isRegistering ? 'Créez votre espace pour suivre vos démarches.' : 'Accédez à votre espace citoyen ou administrateur.')}</p>
 
           <form onSubmit={submit}>
             <label>
-              Email
+              {t('Email')}
               <input
                 value={identifier}
                 onChange={(event) => setIdentifier(event.target.value)}
@@ -92,13 +94,13 @@ export function LoginPage() {
             </label>
 
             {isRegistering && <>
-              <label>Nom complet<input value={nom} onChange={(event) => setNom(event.target.value)} autoComplete="name" required /></label>
-              <label>Téléphone (optionnel)<input value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" /></label>
-              <label>CIN (optionnel)<input value={cin} onChange={(event) => setCin(event.target.value)} /></label>
+              <label>{t('Nom complet')}<input value={nom} onChange={(event) => setNom(event.target.value)} autoComplete="name" required /></label>
+              <label>{t('Téléphone (optionnel)')}<input value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" /></label>
+              <label>{t('CIN (optionnel)')}<input value={cin} onChange={(event) => setCin(event.target.value)} /></label>
             </>}
 
             <label>
-              Mot de passe
+              {t('Mot de passe')}
               <span className="password-field">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -111,19 +113,19 @@ export function LoginPage() {
                   type="button"
                   className="password-toggle"
                   onClick={() => setShowPassword((visible) => !visible)}
-                  aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-                  title={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                  aria-label={t(showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe')}
+                  title={t(showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe')}
                 >
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </span>
             </label>
 
-            {error && <p className="error-message">Identifiant ou mot de passe incorrect.</p>}
-            <button className="button primary full" type="submit">{isRegistering ? 'Créer mon compte' : 'Se connecter'}</button>
+            {error && <p className="error-message">{t('Identifiant ou mot de passe incorrect.')}</p>}
+            <button className="button primary full" type="submit">{t(isRegistering ? 'Créer mon compte' : 'Se connecter')}</button>
           </form>
           <button className="text-link auth-switch" type="button" onClick={() => { setIsRegistering((value) => !value); setError(false); }}>
-            {isRegistering ? 'J’ai déjà un compte' : 'Créer un compte citoyen'}
+            {t(isRegistering ? 'J’ai déjà un compte' : 'Créer un compte citoyen')}
           </button>
         </div>
       </section>

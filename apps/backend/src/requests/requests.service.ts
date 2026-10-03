@@ -5,6 +5,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import PDFDocument = require('pdfkit');
 import { Prisma } from '@prisma/client';
 import { existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { createReadStream } from 'node:fs';
 import { join } from 'node:path';
 import { RequestType } from '@prisma/client';
@@ -12,6 +13,7 @@ import { PaymentProvider } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { getRequestRequirements } from './request-requirements';
 import { requestModels } from './request-models';
+import { PDFDocument as EditablePDFDocument } from 'pdf-lib';
 
 const defaultFees: Record<RequestType, number> = {
   BIRTH_CERTIFICATE: 5000,
@@ -201,6 +203,11 @@ export class RequestsService {
       .filter((field) => formData[field.name] === undefined || String(formData[field.name]).trim() === '')
       .map((field) => field.label);
     if (missing.length > 0) throw new BadRequestException(`Champs obligatoires manquants : ${missing.join(', ')}`);
+    if (type === RequestType.LOSS_DECLARATION && typeof formData.datePerte === 'string') {
+      const today = new Date();
+      const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+      if (formData.datePerte > localToday) throw new BadRequestException('La date de perte ne peut pas être dans le futur');
+    }
     if (type === RequestType.CIN_REQUEST || type === RequestType.CIN_RENEWAL) {
       const dateValue = String(formData.dateNaissance);
       const birthDate = new Date(`${dateValue}T00:00:00.000Z`);
@@ -272,19 +279,24 @@ export class RequestsService {
     const isBackOffice = user.role === 'ADMIN' || user.roles?.includes('ADMIN');
     if (!isBackOffice && request.userId !== user.id) throw new ForbiddenException('Vous ne pouvez pas télécharger cette demande');
     if (request.status !== 'APPROVED') throw new ForbiddenException('Le document sera disponible après approbation');
-    const template = await this.prisma.documentTemplate.findFirst({ where: { requestType: request.type, isActive: true } });
-    const documentTemplate = template ?? {
-      name: 'Modèle administratif standard',
-      bodyText: 'Document délivré après instruction et validation par la Préfecture d’Ihosy.',
-    };
-    if (template?.storagePath && !existsSync(template.storagePath)) throw new ConflictException('Le fichier du modèle de document est indisponible');
+    const model = this.getModelPdf(request.type);
     const marks = await this.prisma.officialMark.findMany({ where: { isActive: true, kind: { in: ['STAMP', 'SIGNATURE'] } } });
 
-    return new Promise<Buffer>((resolve) => {
+    return new Promise<Buffer>((resolve, reject) => {
       const document = new PDFDocument({ size: 'A4', margin: 56 });
       const chunks: Buffer[] = [];
       document.on('data', (chunk: Buffer) => chunks.push(chunk));
-      document.on('end', () => resolve(Buffer.concat(chunks)));
+      document.on('end', async () => {
+        try {
+          const templatePdf = await EditablePDFDocument.load(readFileSync(model.path));
+          const detailsPdf = await EditablePDFDocument.load(Buffer.concat(chunks));
+          const detailsPages = await templatePdf.copyPages(detailsPdf, detailsPdf.getPageIndices());
+          detailsPages.forEach((page) => templatePdf.addPage(page));
+          resolve(Buffer.from(await templatePdf.save()));
+        } catch (error) {
+          reject(error);
+        }
+      });
       const labels: Record<string, string> = {
         BIRTH_CERTIFICATE: 'CERTIFICAT / EXTRAIT DE NAISSANCE',
         RESIDENCE_CERTIFICATE: 'CERTIFICAT DE RESIDENCE',
@@ -312,7 +324,7 @@ export class RequestsService {
         natureProjet: 'Nature du projet', referenceParcelle: 'Référence parcelle', nomEntreprise: 'Entreprise',
         activite: 'Activité', representant: 'Représentant', immatriculation: 'Immatriculation', profession: 'Profession', telephone: 'Téléphone', cinNif: 'CIN / NIF',
         marqueModele: 'Marque / type du véhicule', numeroChassis: 'Numéro de châssis', ancienneCarteGrise: 'Ancienne carte grise', puissanceFiscale: 'Puissance fiscale', superficie: 'Superficie approximative', formeJuridique: 'Forme juridique',
-        objetPerdu: 'Objet perdu', typeDocument: 'Document perdu', lieuPerte: 'Lieu de perte', lieuCirconstances: 'Lieu / circonstances',
+        objetPerdu: 'Objet perdu',         typeDocument: 'Matériel perdu', materielsPerdus: 'Matériel perdu', lieuPerte: 'Lieu de perte', lieuCirconstances: 'Lieu / circonstances',
         datePerte: 'Date de perte', document: 'Document', objet: 'Objet', lieu: 'Lieu',
         dateEvenement: 'Date de l’événement', urgence: 'Urgence', nomAssociation: 'Association / ONG',
         president: 'Président', nomPresident: 'Nom du président', cinPresident: 'CIN du président', adressePresident: 'Adresse du président', telephonePresident: 'Téléphone du président', sigle: 'Sigle', objetSocial: 'Objet social', siege: 'Siège', membres: 'Membres',
@@ -328,7 +340,7 @@ export class RequestsService {
       document.fontSize(18).text('PREFECTURE D’IHOSY', { align: 'center' });
       document.moveDown(0.5).fontSize(12).text('DOCUMENT ADMINISTRATIF OFFICIEL', { align: 'center' });
       document.moveDown(2).fontSize(11).text(`Service : ${request.service.nameFr}`);
-      document.text(`Modèle appliqué : ${documentTemplate.name}`);
+      document.text(`Modèle appliqué : ${requestModels[request.type].title}`);
       document.text(`Référence : ${request.id}`);
       document.text(`Demandeur : ${request.user.nom ?? request.user.email}`);
       document.text(`Date de délivrance : ${new Date().toLocaleDateString('fr-FR')}`);
@@ -346,7 +358,7 @@ export class RequestsService {
         service: request.service.nameFr,
         titre: request.title ?? request.service.nameFr,
       };
-      const templateBody = documentTemplate.bodyText ?? request.description ?? 'Aucune observation complémentaire.';
+      const templateBody = request.description ?? 'Aucune observation complémentaire.';
       const renderedTemplate = templateBody.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_match, variable: string) => {
         const value = templateVariables[variable.trim()];
         if (value === undefined || value === null) return '';

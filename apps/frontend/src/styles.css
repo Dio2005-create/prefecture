@@ -927,3 +927,87 @@ tbody tr:hover { background: #f6f8fc; }
 .history-drawer > header, .help-heading, .help-note { border-color: var(--line); }
 .history-item small, .history-item-copy small { color: var(--ink-muted); }
 .chat-avatar, .help-icon { background: var(--blue-spectrum); }
+
+.nav-preferences { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+.nav-preferences-label { display: grid; place-items: center; color: var(--ink-muted); }
+.language-switch { display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-subtle); }
+.language-switch button { min-width: 34px; height: 28px; padding: 0 7px; color: var(--ink-muted); border: 0; border-radius: 6px; background: transparent; cursor: pointer; font-size: 10px; font-weight: 800; }
+.language-switch button[aria-pressed="true"] { color: #fff; background: var(--primary); }
+.theme-toggle { width: 34px; height: 34px; }
+.topbar .nav-preferences { margin-left: auto; }
+.topbar .profile { margin-left: 18px; }
+
+:root[data-theme="dark"] {
+	color-scheme: dark;
+	--app-bg: #151d2a;
+	--surface: #202b3b;
+	--surface-subtle: #263346;
+	--ink: #e5edf8;
+	--ink-muted: #a8b7ca;
+	--line: #39485d;
+	--primary: #7da6e6;
+	--primary-strong: #9bbaf0;
+	--accent: #d49a72;
+	--focus: #779bd1;
+	--shadow-soft: 0 14px 36px rgba(0, 0, 0, .24);
+	--blue-spectrum: linear-gradient(110deg, #426ba9 0%, #4e79bb 55%, #658bc6 100%);
+}
+:root[data-theme="dark"] body { color: var(--ink); background: linear-gradient(135deg, #141c28 0%, #1d2939 100%); }
+:root[data-theme="dark"] .app-shell, :root[data-theme="dark"] .workspace, :root[data-theme="dark"] .content { color: var(--ink); }
+:root[data-theme="dark"] .backoffice-shell .sidebar { color: #e5edf8; background: linear-gradient(165deg, #192b40 0%, #152337 100%); }
+:root[data-theme="dark"] .frontoffice-shell .sidebar { color: var(--ink); border-color: var(--line); background: rgba(32, 43, 59, .97); }
+:root[data-theme="dark"] .frontoffice-shell .brand, :root[data-theme="dark"] .frontoffice-shell nav a { color: #d5e1f1; }
+:root[data-theme="dark"] .frontoffice-shell nav a:hover, :root[data-theme="dark"] .frontoffice-shell nav a.active { color: #fff; background: #2a3b52; border-bottom-color: var(--primary); }
+:root[data-theme="dark"] .topbar { border-color: var(--line); background: #202b3b; }
+:root[data-theme="dark"] .profile, :root[data-theme="dark"] .crumb strong { color: var(--ink); }
+:root[data-theme="dark"] .panel, :root[data-theme="dark"] .stat-card, :root[data-theme="dark"] .request-list-item, :root[data-theme="dark"] .profile-summary,
+:root[data-theme="dark"] .appointment-form, :root[data-theme="dark"] .admin-create-form, :root[data-theme="dark"] .admin-settings-form,
+:root[data-theme="dark"] .request-form-section, :root[data-theme="dark"] .chat-card, :root[data-theme="dark"] .assistant-help-card,
+:root[data-theme="dark"] .result-card, :root[data-theme="dark"] .settings-panel, :root[data-theme="dark"] .login-panel-inner {
+	color: var(--ink); border-color: var(--line); background: var(--surface); box-shadow: var(--shadow-soft);
+}
+:root[data-theme="dark"] .panel-heading h2, :root[data-theme="dark"] .panel-heading h3, :root[data-theme="dark"] .request-form-section h3,
+:root[data-theme="dark"] .settings-heading h2, :root[data-theme="dark"] .help-heading h2, :root[data-theme="dark"] .page-intro h1,
+:root[data-theme="dark"] .assistant-page-heading h1, :root[data-theme="dark"] .request-form-header h2, :root[data-theme="dark"] .request-list-panel h2,
+:root[data-theme="dark"] .settings-panel h1, :root[data-theme="dark"] .chat-identity, :root[data-theme="dark"] .chat-empty h2 { color: var(--ink); }
+:root[data-theme="dark"] .button { color: var(--ink); border-color: var(--line); background: var(--surface-subtle); }
+:root[data-theme="dark"] .button:hover:not(:disabled) { color: #fff; border-color: #617b9f; background: #30415a; }
+:root[data-theme="dark"] .button.primary, :root[data-theme="dark"] .request-confirm-button, :root[data-theme="dark"] .appointment-complete,
+:root[data-theme="dark"] .filter-tabs button.active { color: #fff; border-color: var(--primary); background: var(--blue-spectrum); }
+:root[data-theme="dark"] .icon-button { color: #b9c8dc; border-color: var(--line); background: var(--surface); }
+:root[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]), :root[data-theme="dark"] select, :root[data-theme="dark"] textarea,
+:root[data-theme="dark"] .request-field input, :root[data-theme="dark"] .request-field select, :root[data-theme="dark"] .request-field textarea {
+	color: var(--ink); border-color: var(--line); background-color: #1a2534;
+}
+:root[data-theme="dark"] input::placeholder, :root[data-theme="dark"] textarea::placeholder { color: #91a2b8; }
+:root[data-theme="dark"] select option { color: var(--ink); background: #1a2534; }
+:root[data-theme="dark"] .request-field, :root[data-theme="dark"] .appointment-form label, :root[data-theme="dark"] .admin-settings-form label { color: #c0cde0; }
+:root[data-theme="dark"] table { color: var(--ink); }
+:root[data-theme="dark"] thead th { color: #c0cde0; border-color: var(--line); background: #263448; }
+:root[data-theme="dark"] tbody td { border-color: #334359; }
+:root[data-theme="dark"] tbody tr:hover { background: #26364b; }
+:root[data-theme="dark"] .chat-identity small, :root[data-theme="dark"] .chat-empty p, :root[data-theme="dark"] .help-heading p,
+:root[data-theme="dark"] .message-author, :root[data-theme="dark"] .help-note, :root[data-theme="dark"] .page-intro > div > p:last-child,
+:root[data-theme="dark"] .assistant-page-heading p:last-child { color: var(--ink-muted); }
+:root[data-theme="dark"] .chat-empty-icon, :root[data-theme="dark"] .suggestion-card-icon, :root[data-theme="dark"] .history-item-icon { color: var(--primary); border-color: var(--line); background: #293a52; }
+:root[data-theme="dark"] .chat-capabilities span, :root[data-theme="dark"] .message-sources span { color: #c0cde0; border-color: var(--line); background: #263448; }
+:root[data-theme="dark"] .message-body > p, :root[data-theme="dark"] .typing-indicator { color: var(--ink); border-color: var(--line); background: #263448; }
+:root[data-theme="dark"] .chat-message.user .message-body > p, :root[data-theme="dark"] .chat-message.user .message-avatar, :root[data-theme="dark"] .send-button { color: #fff; border-color: var(--primary); background: var(--blue-spectrum); }
+:root[data-theme="dark"] .chat-composer { border-color: var(--line); background: #1a2534; }
+:root[data-theme="dark"] .composer-field textarea { color: var(--ink); }
+:root[data-theme="dark"] .suggestion-card, :root[data-theme="dark"] .history-item { color: var(--ink); border-color: var(--line); background: var(--surface-subtle); }
+:root[data-theme="dark"] .suggestion-card:hover:not(:disabled), :root[data-theme="dark"] .history-item:hover { border-color: #617b9f; background: #2b3c53; }
+:root[data-theme="dark"] .history-drawer, :root[data-theme="dark"] .profile-menu, :root[data-theme="dark"] .profile-menu a, :root[data-theme="dark"] .profile-menu button { color: var(--ink); border-color: var(--line); background: var(--surface); }
+:root[data-theme="dark"] .history-drawer h2, :root[data-theme="dark"] .history-item-copy strong { color: var(--ink); }
+:root[data-theme="dark"] .history-item-copy small { color: var(--ink-muted); }
+:root[data-theme="dark"] .confirm-modal { color: var(--ink); border-color: var(--line); background: var(--surface); }
+:root[data-theme="dark"] .confirm-modal h2 { color: var(--ink); }
+:root[data-theme="dark"] .confirm-modal > p:not(.eyebrow) { color: var(--ink-muted); }
+:root[data-theme="dark"] .login-page, :root[data-theme="dark"] .login-panel { background: #151d2a; }
+:root[data-theme="dark"] .login-visual { background: linear-gradient(140deg, #22354e 0%, #293d59 100%); }
+:root[data-theme="dark"] .login-visual h2, :root[data-theme="dark"] .login-panel h1 { color: var(--ink); }
+:root[data-theme="dark"] .login-visual-copy, :root[data-theme="dark"] .login-subtitle, :root[data-theme="dark"] .login-panel label { color: var(--ink-muted); }
+:root[data-theme="dark"] .login-features li { color: var(--ink); border-color: var(--line); background: rgba(20, 29, 42, .45); }
+:root[data-theme="dark"] .language-switch { border-color: var(--line); background: var(--surface-subtle); }
+:root[data-theme="dark"] .language-switch button { color: var(--ink-muted); }
+:root[data-theme="dark"] .language-switch button[aria-pressed="true"] { color: #fff; background: #426ba9; }

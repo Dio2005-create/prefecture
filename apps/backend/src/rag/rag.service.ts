@@ -160,7 +160,7 @@ export class RagService {
 
   private detecterLangue(question: string): 'fr' | 'mg' {
     const normalized = this.normaliserTexte(question);
-    const malagasyMarkers = ['ahoana', 'manao', 'hanaovana', 'fomba', 'inona', 'aiza', 'oviana', 'ohatrinona', 'firy', 'mila', 'takiana', 'taratasy', 'antontan', 'fanambarana', 'fahazoan', 'fanavaozana', 'fitarainana', 'fikambanana', 'sonia', 'karapanondro', 'kara-panondro', 'very', 'afaka', 'azafady', 'ianao', 've', 'ny', 'aminny'];
+    const malagasyMarkers = ['ahoana', 'manao', 'hanaovana', 'fomba', 'inona', 'aiza', 'oviana', 'ohatrinona', 'firy', 'mila', 'takiana', 'taratasy', 'antontan', 'fanambarana', 'fahazoan', 'fanavaozana', 'fitarainana', 'fikambanana', 'sonia', 'karapanondro', 'kara-panondro', 'very', 'handray', 'haka', 'afaka', 'azafady', 'ianao', 've', 'ny', 'aminny'];
     return malagasyMarkers.some((marker) => new RegExp(`\\b${marker}\\b`).test(normalized)) ? 'mg' : 'fr';
   }
 
