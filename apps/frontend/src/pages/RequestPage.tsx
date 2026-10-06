@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import axios from 'axios';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Eye } from 'lucide-react';
 import { prefectureService } from '../services/api';
@@ -44,6 +45,15 @@ const requestLabels: Record<RequestType, string> = {
 };
 
 type AttachmentRequirement = RequestAttachmentRequirement;
+
+function getRequestErrorMessage(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    const responseMessage = (error.response?.data as { message?: string | string[] } | undefined)?.message;
+    if (Array.isArray(responseMessage)) return responseMessage.join(', ');
+    if (responseMessage) return responseMessage;
+  }
+  return error instanceof Error ? error.message : 'La demande n’a pas pu être envoyée.';
+}
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Brouillon', SUBMITTED: 'Reçu', IN_REVIEW: 'En instruction', IN_PROGRESS: 'En instruction',
@@ -111,6 +121,7 @@ export function RequestPage() {
   const [paymentValidationError, setPaymentValidationError] = useState('');
   const [requestError, setRequestError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [formValidationAttempted, setFormValidationAttempted] = useState(false);
   const [requestPage, setRequestPage] = useState(1);
   const visibleRequests = requests.slice((requestPage - 1) * 5, requestPage * 5);
   const formFields = dynamicRequirements?.fields ?? [];
@@ -120,16 +131,46 @@ export function RequestPage() {
   const requiredAttachmentsAreValid = requiredAttachments.every((requirement) =>
     !requirement.required || selectedFiles.filter((item) => item.requirement === requirement.label).length >= (requirement.minFiles ?? 1),
   );
-  const requestFormIsValid = Boolean(selectedServiceId)
-    && !loadingRequirements
-    && !requirementsError
-    && formFields.every((field) => !field.required || Boolean(formData[field.name]?.trim()))
-    && !formFields.some((field) => {
-      const value = formData[field.name]?.trim() ?? '';
-      if (value && field.name.toLowerCase().includes('cin') && field.name !== 'cinNif' && !/^\d{12}$/.test(value)) return true;
-      return field.name === 'datePerte' && Boolean(value) && value > todayDate;
-    })
-    && requiredAttachmentsAreValid;
+  const missingAttachments = requiredAttachments.filter((requirement) =>
+    requirement.required && selectedFiles.filter((item) => item.requirement === requirement.label).length < (requirement.minFiles ?? 1),
+  );
+  const requestFormWarnings: string[] = [];
+  if (!selectedServiceId) requestFormWarnings.push(t('Sélectionnez un service avant de continuer.'));
+  if (loadingRequirements) requestFormWarnings.push(t('Chargement des champs obligatoires…'));
+  if (requirementsError) requestFormWarnings.push(t('Impossible de charger les pièces exigées. Actualisez la page avant de soumettre.'));
+  formFields.forEach((field) => {
+    const value = formData[field.name]?.trim() ?? '';
+    if (field.required && !value) requestFormWarnings.push(`${t(field.label)} : ${t('Ce champ est obligatoire.')}`);
+    if (value && field.name.toLowerCase().includes('cin') && field.name !== 'cinNif' && !/^\d{12}$/.test(value)) {
+      requestFormWarnings.push(`${t(field.label)} : ${t('La CIN doit contenir exactement 12 chiffres.')}`);
+    }
+    if (field.name === 'datePerte' && value && value > todayDate) {
+      requestFormWarnings.push(`${t(field.label)} : ${t('La date de perte ne peut pas être dans le futur.')}`);
+    }
+  });
+  if ((requestType === 'CIN_REQUEST' || requestType === 'CIN_RENEWAL') && formData.dateNaissance) {
+    const birthDate = new Date(`${formData.dateNaissance}T00:00:00.000Z`);
+    const today = new Date();
+    let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
+    if (today.getUTCMonth() < birthDate.getUTCMonth() || (today.getUTCMonth() === birthDate.getUTCMonth() && today.getUTCDate() < birthDate.getUTCDate())) age -= 1;
+    if (!Number.isNaN(birthDate.getTime()) && age < 18) requestFormWarnings.push(t('La demande de CIN est réservée aux personnes âgées de 18 ans et plus.'));
+  }
+  missingAttachments.forEach((requirement) => {
+    const count = selectedFiles.filter((file) => file.requirement === requirement.label).length;
+    requestFormWarnings.push(`${t(requirement.label)} : ${t('Pièce justificative obligatoire manquante')} (${count}/${requirement.minFiles ?? 1}).`);
+  });
+  const requestFormIsValid = requestFormWarnings.length === 0 && requiredAttachmentsAreValid && !loadingRequirements && !requirementsError;
+  const paymentPhoneIsValid = /^\d{10}$/.test(paymentPhone)
+    && mobileMoneyPrefixes[paymentProvider].some((prefix) => paymentPhone.startsWith(prefix));
+  const paymentPinIsValid = paymentPin === '1234';
+  const paymentWarnings = [
+    ...(loadingFees ? [t('Chargement du tarif…')] : []),
+    ...(feesError || !Number.isFinite(requestFee) ? [t('Le tarif est indisponible. Actualisez la page avant de réessayer.')] : []),
+    ...(requestFee > 0 ? [
+    ...(!paymentPhone ? [t('Le numéro de téléphone est obligatoire.')] : !paymentPhoneIsValid ? [t('Le numéro doit contenir 10 chiffres et respecter le préfixe de l’opérateur choisi.')] : []),
+      ...(!paymentPin ? [t('Le code PIN de simulation est obligatoire.')] : !paymentPinIsValid ? [t('PIN incorrect : utilisez le code de démonstration 1234.')] : []),
+    ] : []),
+  ];
 
   const mutation = useMutation({
     mutationFn: prefectureService.createMultipartRequest,
@@ -145,25 +186,26 @@ export function RequestPage() {
       setPaymentPhone('');
       setPaymentPin('');
       setPaymentValidationError('');
+      setFormValidationAttempted(false);
     },
-    onError: (error) => setSubmitError(error instanceof Error ? error.message : 'La demande n’a pas pu être envoyée.'),
+    onError: (error) => setSubmitError(getRequestErrorMessage(error)),
   });
 
   const confirmSimulatedPayment = () => {
     if (!requestFormIsValid) {
-      setPaymentValidationError('Veuillez remplir correctement tous les champs et fournir les pièces obligatoires.');
+      setPaymentValidationError('Veuillez corriger les champs et pièces justificatives signalés avant de payer.');
       return;
     }
     if (loadingFees || feesError || !Number.isFinite(requestFee)) {
       setPaymentValidationError('Le tarif configuré est indisponible. Réessayez après actualisation.');
       return;
     }
-    if (requestFee > 0 && (!/^\d{10}$/.test(paymentPhone) || !mobileMoneyPrefixes[paymentProvider].some((prefix) => paymentPhone.startsWith(prefix)))) {
+    if (requestFee > 0 && !paymentPhoneIsValid) {
       setPaymentValidationError('Saisissez 10 chiffres avec un préfixe valide.');
       return;
     }
-    if (requestFee > 0 && paymentPin !== '1234') {
-      setPaymentValidationError('Code PIN incorrect. Utilisez le code de démonstration 1234.');
+    if (requestFee > 0 && !paymentPinIsValid) {
+      setPaymentValidationError('PIN incorrect : utilisez le code de démonstration 1234.');
       return;
     }
     setPaymentValidationError('');
@@ -199,6 +241,7 @@ export function RequestPage() {
   };
 
   const submitRequest = () => {
+    setFormValidationAttempted(true);
     if (loadingFees || feesError || !Number.isFinite(requestFee)) {
       setSubmitError('Impossible de charger le tarif configuré. Réessayez avant de soumettre.');
       return;
@@ -219,9 +262,12 @@ export function RequestPage() {
     }
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) { setSubmitError('Corrigez les champs signalés avant de continuer.'); return; }
-    const missingAttachments = requiredAttachments.filter((requirement) => requirement.required && selectedFiles.filter((item) => item.requirement === requirement.label).length < (requirement.minFiles ?? 1));
     if (missingAttachments.length > 0) {
-      setSubmitError(`Pièces obligatoires manquantes : ${missingAttachments.map((item) => t(item.label)).join(', ')}`);
+      setSubmitError(`Pièces obligatoires manquantes : ${missingAttachments.map((item) => `${t(item.label)}${(item.minFiles ?? 1) > 1 ? ` (${selectedFiles.filter((file) => file.requirement === item.label).length}/${item.minFiles} ${t('fichier(s) fourni(s)')})` : ''}`).join(', ')}`);
+      return;
+    }
+    if (!selectedServiceId) {
+      setSubmitError('Sélectionnez un service avant de continuer.');
       return;
     }
     setSubmitError('');
@@ -308,6 +354,10 @@ export function RequestPage() {
           </label></section>
 
           {submitError && <p className="error-message" role="alert">{t(submitError)}</p>}
+          {formValidationAttempted && Object.keys(fieldErrors).length > 0 && <ul className="field-warning" role="alert">{Object.entries(fieldErrors).map(([name, message]) => {
+            const field = formFields.find((item) => item.name === name);
+            return <li key={name}>{field ? t(field.label) : name} — {t(message)}</li>;
+          })}</ul>}
           {requestError && <p className="error-message" role="alert">{t(requestError)}</p>}
           <button
             className="button primary request-submit"
@@ -326,16 +376,17 @@ export function RequestPage() {
           <p className="payment-demo-notice">{t('Mode démonstration : aucun débit réel n’est effectué. PIN de test : 1234. Le dossier est transmis après validation.')}</p>
           {requestFee > 0 && <div className="payment-fields">
             <label className="request-field">{t('Opérateur')}<select value={paymentProvider} onChange={(event) => { setPaymentProvider(event.target.value as MobileMoneyProvider); setPaymentPhone(''); setPaymentPin(''); setPaymentValidationError(''); }}><option value="MVOLA">MVola</option><option value="AIRTEL_MONEY">Airtel Money</option><option value="ORANGE_MONEY">Orange Money</option></select></label>
-            <label className="request-field">{t('Numéro du citoyen (10 chiffres)')}<input type="tel" inputMode="numeric" autoComplete="tel-national" value={paymentPhone} maxLength={10} placeholder={paymentProvider === 'MVOLA' ? '0340000000' : paymentProvider === 'AIRTEL_MONEY' ? '0330000000' : '0320000000'} onChange={(event) => { setPaymentPhone(event.target.value.replace(/\D/g, '').slice(0, 10)); setPaymentValidationError(''); }} /></label>
-            <label className="request-field">{t('Code PIN de simulation (4 chiffres)')}<input type="password" inputMode="numeric" autoComplete="one-time-code" value={paymentPin} maxLength={4} onChange={(event) => { setPaymentPin(event.target.value.replace(/\D/g, '').slice(0, 4)); setPaymentValidationError(''); }} /></label>
+            <label className="request-field">{t('Numéro du citoyen (10 chiffres)')}<input type="tel" inputMode="numeric" autoComplete="tel-national" value={paymentPhone} maxLength={10} placeholder={paymentProvider === 'MVOLA' ? '0340000000' : paymentProvider === 'AIRTEL_MONEY' ? '0330000000' : '0320000000'} aria-invalid={Boolean(paymentPhone) && !paymentPhoneIsValid} onChange={(event) => { setPaymentPhone(event.target.value.replace(/\D/g, '').slice(0, 10)); setPaymentValidationError(''); }} />{paymentPhone && !paymentPhoneIsValid && <small className="field-warning" role="status">{t('Le numéro doit contenir 10 chiffres et respecter le préfixe de l’opérateur choisi.')}</small>}</label>
+            <label className="request-field">{t('Code PIN de simulation (4 chiffres)')}<input type="password" inputMode="numeric" autoComplete="one-time-code" value={paymentPin} maxLength={4} aria-invalid={Boolean(paymentPin) && !paymentPinIsValid} onChange={(event) => { setPaymentPin(event.target.value.replace(/\D/g, '').slice(0, 4)); setPaymentValidationError(''); }} />{paymentPin && !paymentPinIsValid && <small className="field-warning" role="status">{t('PIN incorrect : utilisez le code de démonstration 1234.')}</small>}</label>
             <small className="form-hint">{t('Préfixes autorisés :')} {paymentProvider === 'MVOLA' ? '034, 038 ou 036' : paymentProvider === 'AIRTEL_MONEY' ? '033 ou 035' : '032 ou 037'}.</small>
           </div>}
           {paymentValidationError && <p className="error-message" role="alert">{t(paymentValidationError)}</p>}
-          {!requestFormIsValid && <p className="error-message" role="alert">{t('Veuillez remplir correctement tous les champs obligatoires et fournir les pièces justificatives requises avant de payer.')}</p>}
+          {!requestFormIsValid && <div className="field-warning" role="alert"><strong>{t('Vérifiez les informations avant de payer :')}</strong><ul>{requestFormWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
+          {paymentWarnings.length > 0 && <ul className="field-warning payment-warning-list" role="status">{paymentWarnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>}
           {submitError && <p className="error-message" role="alert">{t(submitError)}</p>}
           <div className="modal-actions">
             <button className="button" type="button" disabled={mutation.isPending} onClick={() => { setPaymentModalOpen(false); setPaymentPin(''); setPaymentValidationError(''); }}>{t('Annuler')}</button>
-            <button className="button primary" type="button" disabled={!requestFormIsValid || mutation.isPending || loadingFees || feesError || (requestFee > 0 && (!/^\d{10}$/.test(paymentPhone) || !mobileMoneyPrefixes[paymentProvider].some((prefix) => paymentPhone.startsWith(prefix)) || !/^\d{4}$/.test(paymentPin) || paymentPin !== '1234'))} onClick={confirmSimulatedPayment}>{t(mutation.isPending ? 'Confirmation...' : requestFee > 0 ? 'Valider le paiement' : 'Confirmer l’envoi')}</button>
+            <button className="button primary" type="button" disabled={!requestFormIsValid || mutation.isPending || loadingFees || feesError} onClick={confirmSimulatedPayment}>{t(mutation.isPending ? 'Confirmation...' : requestFee > 0 ? 'Valider le paiement' : 'Confirmer l’envoi')}</button>
           </div>
         </section></div>}
 

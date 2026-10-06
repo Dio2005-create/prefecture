@@ -34,7 +34,7 @@ export const prefectureService = {
   listRequests: async () => (await api.get<CitizenRequest[]>('/requests')).data,
   createRequest: async (payload: { serviceId: string; type: string; title?: string; description?: string; formData?: Record<string, unknown> }) =>
     (await api.post<CitizenRequest>('/requests', payload)).data,
-  createMultipartRequest: async (payload: { serviceId: string; type: string; title?: string; description?: string; formData: Record<string, unknown>; files: Array<{ requirement: string; file: File }>; paymentConfirmed: boolean; paymentProvider?: 'MVOLA' | 'AIRTEL_MONEY' | 'ORANGE_MONEY'; paymentPhone?: string; confirmedAmount: number }) => {
+  createMultipartRequest: async (payload: { serviceId: string; type: string; title?: string; description?: string; formData: Record<string, unknown>; files: Array<{ requirement: string; file: File }>; paymentConfirmed: boolean; paymentProvider?: 'MVOLA' | 'AIRTEL_MONEY' | 'ORANGE_MONEY'; paymentPhone?: string; confirmedAmount: number; simulationPin?: string }) => {
     const form = new FormData();
     form.append('serviceId', payload.serviceId);
     form.append('type', payload.type);
@@ -46,6 +46,7 @@ export const prefectureService = {
     form.append('confirmedAmount', String(payload.confirmedAmount));
     if (payload.paymentProvider) form.append('paymentProvider', payload.paymentProvider);
     if (payload.paymentPhone) form.append('paymentPhone', payload.paymentPhone);
+    if (payload.simulationPin) form.append('simulationPin', payload.simulationPin);
     payload.files.forEach((item) => form.append('attachments', item.file));
     return (await api.post<CitizenRequest>('/requests/multipart', form)).data;
   },
