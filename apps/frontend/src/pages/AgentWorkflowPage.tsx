@@ -57,8 +57,8 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
   };
 
   return (
-    <div className="panel" style={{ padding: 20, marginBottom: 12, borderLeft: '4px solid var(--color-blue)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'start' }}>
+    <div className="panel request-card" style={{ padding: 20, marginBottom: 12, borderLeft: '4px solid var(--color-blue)' }}>
+      <div className="request-card-header">
         <div>
           <p className="eyebrow">{request.service?.nameFr || 'Service inconnu'}</p>
           <h3 style={{ margin: '0.4rem 0', fontSize: '1.1rem' }}>{request.title || 'Demande sans titre'}</h3>
