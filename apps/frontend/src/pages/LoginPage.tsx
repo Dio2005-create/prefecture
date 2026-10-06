@@ -63,7 +63,7 @@ export function LoginPage() {
       <section className="login-visual">
         <div className="login-visual-inner">
           <img src="/logoPrefet.jpg" alt={t('Logo de la préfecture')} className="login-logo" />
-          <p className="eyebrow">{t('E-Préfecture d’Ihosy')}</p>
+          <p className="eyebrow">{t('E-Servisy d’Ihosy')}</p>
           <h2>{t('Un guichet unique pour l’administration.')}</h2>
           <p className="login-visual-copy">
             {t('Suivez vos demandes, consultez les services et accédez à votre espace personnel en quelques clics.')}

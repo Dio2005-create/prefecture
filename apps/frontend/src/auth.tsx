@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { authService } from './services/api';
+import { LoadingPage } from './components/ui';
 
 const SESSION_KEY = 'archives-session';
 const ACTIVITY_KEY = 'archives-last-activity';
@@ -115,14 +116,14 @@ export function useAuth() {
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { authenticated, restoringSession } = useAuth();
   const location = useLocation();
-  if (restoringSession) return null;
+  if (restoringSession) return <LoadingPage />;
   return authenticated ? children : <Navigate to="/login" replace state={{ from: location.pathname }} />;
 }
 
 export function RequireRoles({ roles, children }: { roles: string[]; children: ReactNode }) {
   const { authenticated, user, restoringSession } = useAuth();
   const location = useLocation();
-  if (restoringSession) return null;
+  if (restoringSession) return <LoadingPage />;
   if (!authenticated) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (!user || !roles.some((role) => user.roles.includes(role) || (role === 'ADMIN' && user.role === 'ADMIN'))) {
     return <Navigate to="/front/accueil" replace />;
@@ -133,7 +134,7 @@ export function RequireRoles({ roles, children }: { roles: string[]; children: R
 export function RequireCitizen({ children }: { children: ReactNode }) {
   const { authenticated, user, restoringSession } = useAuth();
   const location = useLocation();
-  if (restoringSession) return null;
+  if (restoringSession) return <LoadingPage />;
   if (!authenticated) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (!user || (user.role !== 'CITIZEN' && !user.roles.includes('CITIZEN'))) return <Navigate to="/back/accueil" replace />;
   return children;
@@ -141,7 +142,7 @@ export function RequireCitizen({ children }: { children: ReactNode }) {
 
 export function RoleLanding() {
   const { authenticated, user, restoringSession } = useAuth();
-  if (restoringSession) return null;
+  if (restoringSession) return <LoadingPage />;
   if (!authenticated) return <Navigate to="/login" replace />;
   return user?.role === 'CITIZEN' || user?.roles.includes('CITIZEN') ? <Navigate to="/front/accueil" replace /> : <Navigate to="/back/accueil" replace />;
 }

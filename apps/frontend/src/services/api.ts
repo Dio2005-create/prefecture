@@ -100,12 +100,12 @@ export const adminService = {
   validateByChief: async (id: string, notes?: string) =>
     (await api.post<CitizenRequest>(`/admin/requests/${id}/validate`, { notes })).data,
   listTemplates: async () => (await api.get<Array<{ id: string; requestType: string; name: string; bodyText?: string; originalName?: string; mimeType?: string; isActive: boolean }>>('/admin/templates')).data,
-  saveTemplate: async (file: File, fields: { requestType: string; name: string; bodyText: string }) => {
+  saveTemplate: async (file: File, fields: { requestType: string; name: string; bodyText?: string }) => {
     const form = new FormData();
     form.append('file', file);
     form.append('requestType', fields.requestType);
     form.append('name', fields.name);
-    form.append('bodyText', fields.bodyText);
+    if (fields.bodyText) form.append('bodyText', fields.bodyText);
     return (await api.post('/admin/templates', form)).data;
   },
   activateTemplate: async (id: string) => (await api.post(`/admin/templates/${id}/activate`)).data,

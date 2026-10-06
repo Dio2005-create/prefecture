@@ -1077,3 +1077,78 @@ tbody tr:hover { background: #f6f8fc; }
 	.backoffice-shell .pagination { flex-wrap: wrap; gap: 8px; }
 	.backoffice-shell .detail-grid, .backoffice-shell .metadata-list { grid-template-columns: minmax(0, 1fr); }
 }
+
+.loading-page {
+	min-height: 100vh;
+	min-height: 100dvh;
+	display: grid;
+	place-items: center;
+	padding: 24px;
+	color: #263d3e;
+	background: radial-gradient(ellipse at center, #fff 0%, #f1f6f4 72%);
+}
+.loading-page-card {
+	display: grid;
+	justify-items: center;
+	gap: 16px;
+	min-width: min(260px, 100%);
+	padding: 30px 36px;
+	border: 1px solid #dce8e3;
+	border-radius: 16px;
+	background: rgba(255, 255, 255, .9);
+	box-shadow: 0 16px 42px rgba(32, 67, 62, .1);
+}
+.loading-page-card p { margin: 0; color: #45635e; font-size: 14px; font-weight: 700; }
+.loading-page-spinner { width: 42px; height: 42px; color: #28776d; animation: loading-page-spin 850ms linear infinite; }
+@keyframes loading-page-spin { to { transform: rotate(360deg); } }
+:root[data-theme="dark"] .loading-page { color: #e2ebf5; background: radial-gradient(ellipse at center, #26364b 0%, #182536 72%); }
+:root[data-theme="dark"] .loading-page-card { border-color: #3a4c63; background: rgba(32, 43, 59, .92); box-shadow: 0 16px 42px rgba(0, 0, 0, .24); }
+:root[data-theme="dark"] .loading-page-card p { color: #c4d2e4; }
+:root[data-theme="dark"] .loading-page-spinner { color: #91cbb4; }
+@media (prefers-reduced-motion: reduce) { .loading-page-spinner { animation: none; } }
+
+/* Compacte les blocs et garde les états et commandes alignés sur une même ligne. */
+.content { padding: 30px 36px 54px; }
+.page-intro { gap: 14px; margin-bottom: 20px; }
+.page-intro h1, .assistant-page-heading h1 { font-size: clamp(25px, 2.2vw, 32px); }
+.panel { border-radius: 10px; }
+.content > .panel, .content .panel .panel { padding: 16px !important; }
+.panel-heading { gap: 8px; }
+.button { min-height: 34px; padding-inline: 11px; font-size: 11px; }
+.button.small, .mark-actions .button { min-height: 29px; padding-inline: 9px; font-size: 10px; }
+.filter-tabs { align-items: center; gap: 5px; }
+.filter-tabs button, .notification-tabs button { padding: 6px 9px; }
+.recent-row { align-items: center; gap: 8px 12px; padding-block: 9px; }
+.mark-actions { align-items: center; gap: 5px; }
+.request-form { gap: 13px; margin-top: 15px; }
+.request-form-section { gap: 10px; padding: 13px; border-radius: 10px; }
+.request-form-grid { gap: 10px; }
+.request-field { gap: 5px; }
+.request-field input, .request-field select, .request-field textarea { padding: 8px 10px; }
+.request-field textarea { min-height: 72px; }
+.request-card-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+.request-card-actions .button { flex: 0 0 auto; min-height: 30px; padding-inline: 9px; }
+.request-card-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--color-border); }
+.request-card-footer .request-card-actions { margin-left: auto; }
+.request-card-status { display: inline-flex; align-items: center; width: fit-content; padding: 3px 8px; border-radius: 999px; background: var(--color-blue-light); color: var(--color-blue); font-size: 10px; line-height: 1.3; white-space: nowrap; }
+.recent-row .status { flex: 0 0 auto; }
+.stat-card { min-height: 118px; padding: 16px; }
+.stat-card strong { margin: 12px 0 5px; font-size: 30px; }
+.status { display: inline-flex; align-items: center; gap: 5px; width: fit-content; max-width: 100%; padding: 3px 8px; border-radius: 999px; font-size: 10px; line-height: 1.3; white-space: nowrap; }
+.request-action-footer { align-items: center; gap: 6px; }
+
+@media (max-width: 900px) {
+	.content { padding: 24px 20px 40px; }
+	.request-card-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; }
+}
+@media (max-width: 560px) {
+	.content { padding: 20px 13px 34px; }
+	.page-intro { align-items: flex-start; margin-bottom: 15px; }
+	.page-intro h1, .assistant-page-heading h1 { font-size: 25px; }
+	.request-form-section { padding: 11px; }
+	.request-card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+	.request-card-actions .button { min-width: 0; white-space: nowrap; }
+	.request-card-footer { justify-content: flex-start; }
+	.request-card-footer .request-card-actions { margin-left: 0; }
+	.recent-row .status { white-space: nowrap; }
+}

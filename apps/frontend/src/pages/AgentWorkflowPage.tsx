@@ -4,6 +4,7 @@ import { Check, X, FileText, AlertCircle, Download, Pencil, ChevronDown, Chevron
 import { adminService } from '../services/api';
 import { Loading, Empty, Pagination } from '../components/ui';
 import type { CitizenRequest } from '../types';
+import { usePreferences } from '../preferences';
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Brouillon', SUBMITTED: 'Reçu', IN_REVIEW: 'En instruction', IN_PROGRESS: 'En instruction',
@@ -38,6 +39,7 @@ interface RequestCard {
 }
 
 function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLoading, approveLabel }: RequestCard) {
+  const { t, language } = usePreferences();
   const [action, setAction] = useState<'approve' | 'reject' | 'info' | 'edit' | null>(null);
   const [input, setInput] = useState(action === 'edit' ? JSON.stringify(request.formData ?? {}, null, 2) : '');
   const [attachmentsOpen, setAttachmentsOpen] = useState(false);
@@ -60,18 +62,18 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
     <div className="panel request-card" style={{ padding: 20, marginBottom: 12, borderLeft: '4px solid var(--color-blue)' }}>
       <div className="request-card-header">
         <div>
-          <p className="eyebrow">{request.service?.nameFr || 'Service inconnu'}</p>
-          <h3 style={{ margin: '0.4rem 0', fontSize: '1.1rem' }}>{request.title || 'Demande sans titre'}</h3>
+          <p className="eyebrow">{language === 'mg' ? request.service?.nameMg || t('Service inconnu') : request.service?.nameFr || t('Service inconnu')}</p>
+          <h3 style={{ margin: '0.4rem 0', fontSize: '1.1rem' }}>{request.title || t('Demande sans titre')}</h3>
           <small style={{ color: 'var(--color-muted)' }}>
-            Citoyen: {request.user?.nom || request.user?.email || 'Inconnu'} • {request.user?.email}
+            {t('Citoyen')} : {request.user?.nom || request.user?.email || t('Inconnu')} • {request.user?.email}
           </small>
           {request.description && <p style={{ marginTop: 8, fontSize: '0.9rem', color: 'var(--color-muted)' }}>{request.description}</p>}
           {request.formData && Object.keys(request.formData).length > 0 && (
             <div style={{ marginTop: 12, padding: 12, background: 'var(--color-blue-light)', borderRadius: 6 }}>
-              <strong style={{ fontSize: '0.85rem' }}>Informations déclarées</strong>
+              <strong style={{ fontSize: '0.85rem' }}>{t('Informations déclarées')}</strong>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6, marginTop: 8 }}>
                 {Object.entries(request.formData).map(([key, value]) => (
-                  <small key={key}><strong>{formatFieldName(key)} :</strong> {formatFieldValue(value)}</small>
+                  <small key={key}><strong>{t(formFieldLabels[key] ?? formatFieldName(key))} :</strong> {formatFieldValue(value)}</small>
                 ))}
               </div>
             </div>
@@ -79,19 +81,16 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
           {request.attachments && request.attachments.length > 0 && (
             <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
               <button className="attachment-toggle" type="button" onClick={() => setAttachmentsOpen((open) => !open)} aria-expanded={attachmentsOpen}>
-                <span><FileText size={14} /> Pièces jointes ({request.attachments.length})</span>
+                <span><FileText size={14} /> {t('Pièces jointes ({{count}})', { count: request.attachments.length })}</span>
                 {attachmentsOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
               </button>
               {attachmentsOpen && <div className="attachment-list">{request.attachments.map((attachment) => <button className="button muted" key={attachment.id} onClick={() => void adminService.downloadAttachment(request.id, attachment.id).then((blob) => { const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = attachment.originalName; link.click(); URL.revokeObjectURL(url); })}><Download size={14} />{attachment.label ?? attachment.originalName}</button>)}</div>}
             </div>
           )}
-          <div style={{ marginTop: 8 }}>
-            <span style={{ display: 'inline-block', padding: '2px 8px', backgroundColor: 'var(--color-blue-light)', color: 'var(--color-blue)', borderRadius: 4, fontSize: '0.8rem' }}>
-              {formatStatus(request.status)}
-            </span>
-          </div>
         </div>
-        {terminalStatuses.has(request.status) ? <small className="muted">Actions indisponibles : dossier déjà traité.</small> : <div className="request-card-actions">
+        <div className="request-card-footer">
+          <span className="request-card-status">{t(formatStatus(request.status))}</span>
+          {terminalStatuses.has(request.status) ? <small className="muted">{t('Actions indisponibles : dossier déjà traité.')}</small> : <div className="request-card-actions">
           <button
             className="button small"
             onClick={() => setAction('approve')}
@@ -106,7 +105,7 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
             disabled={isLoading}
             style={{ backgroundColor: '#b44d4d', color: '#fff' }}
           >
-            <X size={14} /> Rejeter
+            <X size={14} /> {t('Rejeter')}
           </button>
           <button
             className="button small"
@@ -114,12 +113,13 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
             disabled={isLoading}
             style={{ backgroundColor: '#b77b32', color: '#fff' }}
           >
-            <AlertCircle size={14} /> Info
+            <AlertCircle size={14} /> {t('Info')}
           </button>
           <button className="button small" onClick={() => { setAction('edit'); setInput(JSON.stringify(request.formData ?? {}, null, 2)); }} disabled={isLoading}>
-            <Pencil size={14} /> Corriger
+            <Pencil size={14} /> {t('Corriger')}
           </button>
-        </div>}
+          </div>}
+        </div>
       </div>
 
       {action && (
@@ -127,21 +127,21 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
           {action === 'approve' && (
             <div>
               <label style={{ display: 'block', marginBottom: 8 }}>
-                <small style={{ fontWeight: 500 }}>Notes d'approbation (optionnel)</small>
+                <small style={{ fontWeight: 500 }}>{t("Notes d'approbation (optionnel)")}</small>
               </label>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Notes..."
+                placeholder={t('Notes...')}
                 style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid var(--color-border)', fontSize: '0.9rem' }}
                 rows={2}
               />
               <div className="request-action-footer">
                 <button className="button request-cancel-button" onClick={() => setAction(null)}>
-                  Annuler
+                  {t('Annuler')}
                 </button>
                 <button className="button primary request-confirm-button" onClick={handleAction} disabled={isLoading}>
-                  Confirmer approbation
+                  {t('Confirmer approbation')}
                 </button>
               </div>
             </div>
@@ -150,21 +150,21 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
           {action === 'reject' && (
             <div>
               <label style={{ display: 'block', marginBottom: 8 }}>
-                <small style={{ fontWeight: 500 }}>Raison du rejet *</small>
+                <small style={{ fontWeight: 500 }}>{t('Raison du rejet')} *</small>
               </label>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Expliquez pourquoi cette demande est rejetée..."
+                placeholder={t('Expliquez pourquoi cette demande est rejetée...')}
                 style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid var(--color-border)', fontSize: '0.9rem' }}
                 rows={3}
               />
               <div className="request-action-footer">
                 <button className="button request-cancel-button" onClick={() => setAction(null)}>
-                  Annuler
+                  {t('Annuler')}
                 </button>
                 <button className="button request-reject-button" onClick={handleAction} disabled={isLoading || !input.trim()}>
-                  Confirmer rejet
+                  {t('Confirmer rejet')}
                 </button>
               </div>
             </div>
@@ -173,21 +173,21 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
           {action === 'info' && (
             <div>
               <label style={{ display: 'block', marginBottom: 8 }}>
-                <small style={{ fontWeight: 500 }}>Information demandée au citoyen *</small>
+                <small style={{ fontWeight: 500 }}>{t('Information demandée au citoyen')} *</small>
               </label>
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Décrivez l'information à fournir..."
+                placeholder={t("Décrivez l'information à fournir...")}
                 style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid var(--color-border)', fontSize: '0.9rem' }}
                 rows={3}
               />
               <div className="request-action-footer">
                 <button className="button request-cancel-button" onClick={() => setAction(null)}>
-                  Annuler
+                  {t('Annuler')}
                 </button>
                 <button className="button primary request-confirm-button" onClick={handleAction} disabled={isLoading || !input.trim()}>
-                  Demander l'info
+                  {t("Demander l'info")}
                 </button>
               </div>
             </div>
@@ -195,9 +195,9 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
 
           {action === 'edit' && (
             <div>
-              <label style={{ display: 'block', marginBottom: 8 }}><small style={{ fontWeight: 500 }}>Informations du formulaire (JSON) *</small></label>
+              <label style={{ display: 'block', marginBottom: 8 }}><small style={{ fontWeight: 500 }}>{t('Informations du formulaire (JSON)')} *</small></label>
               <textarea value={input} onChange={(e) => setInput(e.target.value)} rows={8} style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid var(--color-border)', fontFamily: 'monospace' }} />
-              <div className="request-action-footer"><button className="button request-cancel-button" onClick={() => setAction(null)}>Annuler</button><button className="button primary request-confirm-button" onClick={handleAction} disabled={isLoading || !input.trim()}>Enregistrer</button></div>
+              <div className="request-action-footer"><button className="button request-cancel-button" onClick={() => setAction(null)}>{t('Annuler')}</button><button className="button primary request-confirm-button" onClick={handleAction} disabled={isLoading || !input.trim()}>{t('Enregistrer')}</button></div>
             </div>
           )}
         </div>
@@ -206,7 +206,14 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
   );
 }
 
+const formFieldLabels: Record<string, string> = {
+  materielsPerdus: 'Matériel perdu',
+  datePerte: 'Date approximative de la perte',
+  lieuCirconstances: 'Lieu / circonstances',
+};
+
 export function AdminWorkflowPage() {
+  const { t } = usePreferences();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const { data: stats, isLoading: statsLoading } = useQuery({
@@ -220,7 +227,7 @@ export function AdminWorkflowPage() {
   });
 
   const [actionLoading, setActionLoading] = useState(false);
-  const getApproveLabel = (status: string) => status === 'IN_REVIEW' ? 'Valider et délivrer' : 'Prendre en instruction';
+  const getApproveLabel = (status: string) => t(status === 'IN_REVIEW' ? 'Valider et délivrer' : 'Prendre en instruction');
   const visibleRequests = (requests ?? []).slice((page - 1) * 5, page * 5);
   const refreshRequestData = async () => {
     await Promise.all([
@@ -290,31 +297,31 @@ export function AdminWorkflowPage() {
     <div style={{ display: 'grid', gap: '2rem' }}>
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
         <div className="panel" style={{ padding: 20 }}>
-          <p className="eyebrow">Total</p>
+          <p className="eyebrow">{t('Total')}</p>
           <h2 style={{ margin: '0.6rem 0 0', fontSize: '2rem' }}>{stats?.total ?? 0}</h2>
-          <small>Demandes</small>
+          <small>{t('Demandes')}</small>
         </div>
         <div className="panel" style={{ padding: 20, borderLeft: '4px solid var(--color-orange)' }}>
-          <p className="eyebrow">En attente</p>
+          <p className="eyebrow">{t('En attente')}</p>
           <h2 style={{ margin: '0.6rem 0 0', fontSize: '2rem' }}>{stats?.pending ?? 0}</h2>
-          <small>À traiter</small>
+          <small>{t('À traiter')}</small>
         </div>
         <div className="panel" style={{ padding: 20, borderLeft: '4px solid var(--color-green)' }}>
-          <p className="eyebrow">Approuvées</p>
+          <p className="eyebrow">{t('Approuvées')}</p>
           <h2 style={{ margin: '0.6rem 0 0', fontSize: '2rem' }}>{stats?.approved ?? 0}</h2>
-          <small>Traitées</small>
+          <small>{t('Traitées')}</small>
         </div>
         <div className="panel" style={{ padding: 20, borderLeft: '4px solid var(--color-red)' }}>
-          <p className="eyebrow">Rejetées</p>
+          <p className="eyebrow">{t('Rejetées')}</p>
           <h2 style={{ margin: '0.6rem 0 0', fontSize: '2rem' }}>{stats?.rejected ?? 0}</h2>
-          <small>Non valides</small>
+          <small>{t('Non valides')}</small>
         </div>
       </section>
 
       <div className="panel" style={{ padding: 20 }}>
         <div style={{ marginBottom: 20 }}>
-          <h3 style={{ marginTop: 0 }}>Demandes en traitement</h3>
-          <small style={{ color: 'var(--color-muted)' }}>Approuver, rejeter ou demander des informations complémentaires</small>
+          <h3 style={{ marginTop: 0 }}>{t('Demandes en traitement')}</h3>
+          <small style={{ color: 'var(--color-muted)' }}>{t('Approuver, rejeter ou demander des informations complémentaires')}</small>
         </div>
 
         {requestsLoading ? (

@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { FileText } from 'lucide-react';
+import { FileText, LoaderCircle } from 'lucide-react';
 import { usePreferences } from '../preferences';
 
 export function PageIntro({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) {
@@ -15,6 +15,17 @@ export function Status({ status }: { status: string }) {
 
 export function Empty({ text }: { text: string }) { const { t } = usePreferences(); return <div className="empty"><FileText size={22} /><p>{t(text)}</p></div>; }
 export function Loading() { const { t } = usePreferences(); return <div className="loading">{t('Chargement des archives…')}</div>; }
+export function LoadingPage() {
+  const { t } = usePreferences();
+  return (
+    <main className="loading-page" role="status" aria-live="polite">
+      <div className="loading-page-card">
+        <LoaderCircle className="loading-page-spinner" aria-hidden="true" />
+        <p>{t('Chargement de votre espace…')}</p>
+      </div>
+    </main>
+  );
+}
 export function ErrorState({ message = 'Le service n’est pas disponible. Vérifiez le backend local.' }: { message?: string }) { const { t } = usePreferences(); return <div className="error-state">{t(message)}</div>; }
 export type ToastKind = 'success' | 'error';
 export function useToast() {

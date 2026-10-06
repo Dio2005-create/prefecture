@@ -159,13 +159,12 @@ export function AdminDocumentTemplatesPage() {
   const { data: templates = [], isLoading } = useQuery({ queryKey: ['admin-templates'], queryFn: adminService.listTemplates });
   const [requestType, setRequestType] = useState('RESIDENCE_CERTIFICATE');
   const [name, setName] = useState('');
-  const [bodyText, setBodyText] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [search, setSearch] = useState('');
   const [preview, setPreview] = useState<typeof templates[number] | null>(null);
   const save = async () => {
-    if (!name.trim() || !bodyText.trim() || !file) return;
-    try { await adminService.saveTemplate(file, { requestType, name: name.trim(), bodyText: bodyText.trim() }); setName(''); setBodyText(''); setFile(null); await client.invalidateQueries({ queryKey: ['admin-templates'] }); notify('success', t('Modèle enregistré et activé.')); } catch { notify('error', t('Impossible d’enregistrer le modèle.')); }
+    if (!name.trim() || !file) return;
+    try { await adminService.saveTemplate(file, { requestType, name: name.trim() }); setName(''); setFile(null); await client.invalidateQueries({ queryKey: ['admin-templates'] }); notify('success', t('Modèle enregistré et activé.')); } catch { notify('error', t('Impossible d’enregistrer le modèle.')); }
   };
   const requestTypeLabels: Record<string, string> = {
     BIRTH_CERTIFICATE: 'Acte de naissance', RESIDENCE_CERTIFICATE: 'Certificat de résidence', NATIONALITY_CERTIFICATE: 'Certificat de nationalité', CIN_REQUEST: 'Demande de CIN', CIN_RENEWAL: 'Renouvellement de CIN',
@@ -174,17 +173,14 @@ export function AdminDocumentTemplatesPage() {
   };
   return <><section className="panel" style={{ padding: 24 }}>
     <p className="eyebrow">{t('Modèles administratifs')}</p>
-    <h1>{t('Modèles de documents par type de demande')}</h1>
-    <p>{t('Associez un fichier de référence et le contenu utilisé pour générer les PDF de chaque démarche.')}</p>
+    <p>{t('Associez un fichier PDF de référence au type de démarche correspondant.')}</p>
     <div style={{ display: 'grid', gap: 10, marginTop: 18, padding: 14, border: '1px solid var(--color-border)', borderRadius: 8 }}>
       <select value={requestType} onChange={(event) => setRequestType(event.target.value)} style={{ padding: 10 }}>
         {Object.entries(requestTypeLabels).map(([type, label]) => <option key={type} value={type}>{t(label)}</option>)}
       </select>
       <input value={name} onChange={(event) => setName(event.target.value)} placeholder={t('Nom du modèle')} style={{ padding: 10 }} />
-      <label className="request-field">{t('Contenu du PDF final')}<textarea value={bodyText} onChange={(event) => setBodyText(event.target.value)} rows={8} placeholder={'Exemple :\nJe soussigné(e), {{demandeur}}, certifie que...\nRéférence : {{reference}}\nService : {{service}}'} /></label>
-      <small>{t('Champs disponibles : nom, prenoms, dateNaissance, adresse, demandeur, reference, date, service, titre et les valeurs du formulaire.')}</small>
-      <input type="file" accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-      <button className="button primary" onClick={() => void save()} disabled={!name.trim() || !bodyText.trim() || !file}>{t('Enregistrer le modèle')}</button>
+      <label className="request-field">{t('Fichier modèle PDF')}<input type="file" accept="application/pdf,.pdf" aria-label={t('Fichier modèle PDF')} onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label>
+      <button className="button primary" onClick={() => void save()} disabled={!name.trim() || !file}>{t('Enregistrer le modèle')}</button>
     </div>
     <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
       <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('Rechercher un modèle par son nom')} style={{ padding: 10 }} />

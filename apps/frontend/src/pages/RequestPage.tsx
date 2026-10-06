@@ -319,7 +319,7 @@ export function RequestPage() {
                     value={formData[field.name] ?? ''}
                     onChange={(e) => { setFormData((prev) => ({ ...prev, [field.name]: e.target.value })); setFieldErrors((prev) => ({ ...prev, [field.name]: '' })); }}
                     rows={3}
-                    placeholder={t(field.label)}
+                    placeholder={field.name === 'materielsPerdus' ? t('Indiquez chaque matériel perdu sur une ligne') : t(field.label)}
                   />
                 ) : (
                   <input
@@ -328,7 +328,7 @@ export function RequestPage() {
                     required={field.required}
                     value={formData[field.name] ?? ''}
                     onChange={(e) => { setFormData((prev) => ({ ...prev, [field.name]: e.target.value })); setFieldErrors((prev) => ({ ...prev, [field.name]: '' })); }}
-                    placeholder={t(field.label)}
+                    placeholder={field.name === 'materielsPerdus' ? t('Indiquez chaque matériel perdu sur une ligne') : t(field.label)}
                   />
                 )}
                 {fieldErrors[field.name] && <small className="field-warning" role="alert">{t(fieldErrors[field.name])}</small>}
@@ -343,7 +343,7 @@ export function RequestPage() {
                 <label>{t(requirement.label)}{requirement.required ? ' *' : ` (${t('facultatif')})`}
                   <input type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple={requirement.multiple} required={requirement.required && files.length < (requirement.minFiles ?? 1)} onChange={(event) => handleFiles(requirement, event.target.files)} />
                 </label>
-                {files.length > 0 && <div className="file-preview">{files.map((item) => <span key={`${requirement.key}-${item.file.name}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}><small>{item.file.name} ({Math.ceil(item.file.size / 1024)} Ko)</small><button type="button" className="button small" onClick={() => previewFile(item.file)}><Eye size={13} /> Aperçu</button></span>)}</div>}
+                {files.length > 0 && <div className="file-preview">{files.map((item) => <span key={`${requirement.key}-${item.file.name}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}><small>{item.file.name} ({Math.ceil(item.file.size / 1024)} Ko)</small><button type="button" className="button small" onClick={() => previewFile(item.file)}><Eye size={13} /> {t('Aperçu')}</button></span>)}</div>}
               </div>;
             })}
           </div></section>
@@ -386,7 +386,7 @@ export function RequestPage() {
           {submitError && <p className="error-message" role="alert">{t(submitError)}</p>}
           <div className="modal-actions">
             <button className="button" type="button" disabled={mutation.isPending} onClick={() => { setPaymentModalOpen(false); setPaymentPin(''); setPaymentValidationError(''); }}>{t('Annuler')}</button>
-            <button className="button primary" type="button" disabled={!requestFormIsValid || mutation.isPending || loadingFees || feesError} onClick={confirmSimulatedPayment}>{t(mutation.isPending ? 'Confirmation...' : requestFee > 0 ? 'Valider le paiement' : 'Confirmer l’envoi')}</button>
+            <button className="button primary" type="button" disabled={!requestFormIsValid || paymentWarnings.length > 0 || mutation.isPending} onClick={confirmSimulatedPayment}>{t(mutation.isPending ? 'Confirmation...' : requestFee > 0 ? 'Valider le paiement' : 'Confirmer l’envoi')}</button>
           </div>
         </section></div>}
 
