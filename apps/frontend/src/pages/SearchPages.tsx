@@ -4,10 +4,62 @@ import { Bot, Check, ChevronRight, CircleHelp, History, Languages, MessageCircle
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ragService, searchService } from '../services/api';
 import { ErrorState, PageIntro } from '../components/ui';
-import type { RagResponse, SearchHit } from '../types';
+import type { SearchHit } from '../types';
+import { usePreferences } from '../preferences';
 
-function Result({ hit, number }: { hit: SearchHit; number?: number }) { return <article className="result-card"><span className="result-number">{String(number ?? '•').padStart(2, '0')}</span><div><div className="result-meta"><span>Document source</span><strong>Score {Math.round(hit.score * 100)} %</strong></div><p>{hit.contenu}</p><NavLink className="text-link" to={`/back/documents/${hit.documentId}`}>Ouvrir le document <ChevronRight size={15} /></NavLink></div></article>; }
-export function SearchPage() { const [query, setQuery] = useState(''); const mutation = useMutation({ mutationFn: () => searchService.semantic(query) }); return <><PageIntro eyebrow="Exploration sémantique" title="Chercher par le sens" description="Interrogez le fonds avec vos propres mots, même sans connaître la référence exacte." /><div className="hero-search"><Search size={21} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && query && mutation.mutate()} placeholder="Quels arrêtés concernent les autorisations de construction ?" /><button className="button primary" disabled={!query || mutation.isPending} onClick={() => mutation.mutate()}>{mutation.isPending ? 'Recherche…' : 'Rechercher'}</button></div>{mutation.isError && <ErrorState />}{mutation.data && <section className="results-section"><div className="results-heading"><h2>{mutation.data.length} résultats pertinents</h2><span>Recherche vectorielle locale</span></div>{mutation.data.map((hit) => <Result key={hit.chunkId} hit={hit} />)}</section>}</>; }
+function Result({ hit, number }: { hit: SearchHit; number: number; }) {
+	const { t } = usePreferences();
+	return <article className="result-card">
+		<span className="result-number">{String(number).padStart(2, '0')}</span>
+		<div>
+			<div className="result-meta"><span>{t('Document source')}</span><strong>{t('Score {{score}} %', { score: Math.round(hit.score * 100) })}</strong></div>
+			<p>{hit.contenu}</p>
+			<NavLink className="text-link" to={`/back/documents/${hit.documentId}`}>{t('Ouvrir le document')} <ChevronRight size={15} /></NavLink>
+		</div>
+	</article>;
+}
+
+export function SearchPage() {
+	const { t } = usePreferences();
+	const [query, setQuery] = useState('');
+	const mutation = useMutation({ mutationFn: (searchQuery: string) => searchService.semantic(searchQuery) });
+	const search = (event: FormEvent) => {
+		event.preventDefault();
+		const searchQuery = query.trim();
+		if (searchQuery && !mutation.isPending) mutation.mutate(searchQuery);
+	};
+
+	return <>
+		<PageIntro
+			eyebrow={t('Exploration sémantique')}
+			title={t('Chercher par le sens')}
+			description={t('Interrogez le fonds avec vos propres mots, même sans connaître la référence exacte.')}
+		/>
+		<form className="hero-search" onSubmit={search}>
+			<Search size={21} />
+			<input
+				value={query}
+				onChange={(event) => setQuery(event.target.value)}
+				placeholder={t('Quels arrêtés concernent les autorisations de construction ?')}
+				aria-label={t('Votre recherche')}
+			/>
+			<button className="button primary" type="submit" disabled={!query.trim() || mutation.isPending}>
+				{t(mutation.isPending ? 'Recherche…' : 'Rechercher')}
+			</button>
+		</form>
+		{mutation.isError && <ErrorState message="La recherche a échoué. Vérifiez la connexion au service et réessayez." />}
+		{mutation.isPending && <p role="status">{t('Recherche en cours…')}</p>}
+		{mutation.data && <section className="results-section">
+			<div className="results-heading">
+				<h2>{t('{{count}} résultat(s) pertinent(s)', { count: mutation.data.length })}</h2>
+				<span>{t('Recherche vectorielle locale')}</span>
+			</div>
+			{mutation.data.length === 0
+				? <p>{t('Aucun résultat trouvé. Essayez d’autres mots-clés.')}</p>
+				: mutation.data.map((hit, index) => <Result key={hit.chunkId} hit={hit} number={index + 1} />)}
+		</section>}
+	</>;
+}
 type ChatMessage = { id: string; role: 'user' | 'assistant'; text: string; sources?: SearchHit[] };
 
 const citizenSuggestions = [

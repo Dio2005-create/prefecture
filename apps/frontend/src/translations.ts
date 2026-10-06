@@ -215,6 +215,21 @@ const malagasy: Record<string, string> = {
   'Assistant': 'Mpanampy',
   'Vous': 'Ianao',
   'Nouvelle discussion': 'Resaka vaovao',
+  'Exploration sémantique': 'Fikarohana araka ny hevitra',
+  'Chercher par le sens': 'Mitady araka ny hevitra',
+  'Interrogez le fonds avec vos propres mots, même sans connaître la référence exacte.': 'Mitadiava ao amin’ny tahiry amin’ny teninao, na dia tsy fantatrao aza ny laharana marina.',
+  'Quels arrêtés concernent les autorisations de construction ?': 'Iza amin’ireo didy no mikasika ny fahazoan-dalana hanorina?',
+  'Votre recherche': 'Ny fikarohana',
+  Recherche: 'Fikarohana',
+  'Recherche…': 'Eo am-pikarohana…',
+  'Recherche en cours…': 'Eo am-pikarohana…',
+  'La recherche a échoué. Vérifiez la connexion au service et réessayez.': 'Tsy nahomby ny fikarohana. Hamarino ny fifandraisana amin’ny serivisy ary andramo indray.',
+  'Document source': 'Tahirin-kevitra loharano',
+  'Score {{score}} %': 'Isa {{score}} %',
+  'Ouvrir le document': 'Sokafy ny tahirin-kevitra',
+  '{{count}} résultat(s) pertinent(s)': 'Valiny mifanaraka: {{count}}',
+  'Recherche vectorielle locale': 'Fikarohana vector eo an-toerana',
+  'Aucun résultat trouvé. Essayez d’autres mots-clés.': 'Tsy nahitana valiny. Andramo teny fikarohana hafa.',
 };
 
 export function translateText(language: AppLanguage, text: string, values?: Record<string, string | number>) {

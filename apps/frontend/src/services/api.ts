@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { CitizenRequest, Document, PaginatedDocuments, PrefectureService, RagResponse, RequestRequirements, SearchHit, RequestType } from '../types';
+import type { ChatConversation, CitizenRequest, Document, PaginatedDocuments, PrefectureService, RagResponse, RequestRequirements, SearchHit, RequestType } from '../types';
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:3000' });
 api.interceptors.request.use((config) => {
@@ -148,7 +148,10 @@ export const searchService = {
 };
 
 export const ragService = {
-  ask: async (query: string, topK = 5) =>
-    (await api.post<RagResponse>('/rag/ask', { query, topK })).data,
-  history: async () => (await api.get<Array<{ id: string; texte: string; reponseGeneree?: string; date: string }>>('/rag/history')).data,
+  ask: async (query: string, topK = 5, conversationId?: string) =>
+    (await api.post<RagResponse>('/rag/ask', { query, topK, conversationId })).data,
+  history: async () => (await api.get<ChatConversation[]>('/rag/history')).data,
+  rename: async (id: string, titre: string) =>
+    (await api.patch<Pick<ChatConversation, 'id' | 'titre' | 'updatedAt'>>(`/rag/history/${id}`, { titre })).data,
+  remove: async (id: string) => (await api.delete<{ success: boolean }>(`/rag/history/${id}`)).data,
 };
