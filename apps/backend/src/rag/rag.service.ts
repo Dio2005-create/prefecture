@@ -78,7 +78,7 @@ export class RagService {
       hits.map((hit: { contenu: string }, index: number) => `[${index + 1}] ${hit.contenu}`).join('\n\n'),
     ].filter(Boolean).join('\n\n');
     const prompt = [
-        'Tu es l’assistant officiel de l’e-Préfecture.',
+        'Tu es l’assistant officiel de l’e-Servisy.',
         language === 'mg'
           ? 'Valiny amin’ny teny malagasy ihany. Valio amin’ny teny malagasy mitovy amin’ny fanontaniana; aza mamaly amin’ny teny frantsay.'
           : 'Réponds exclusivement en français, comme la question. Ne bascule pas en malgache.',
@@ -183,8 +183,8 @@ export class RagService {
     const attachments = requirements.attachments.filter((item) => item.required).map((item) => item.label);
     const attachmentText = attachments.length ? attachments.join(', ') : (language === 'mg' ? 'Tsy misy antontan-taratasy fanampiny voatanisa ao amin’ny modely.' : 'Le modèle ne liste pas de pièce jointe obligatoire.');
     return language === 'mg'
-      ? `Fomba fangatahana ${model.titleMg}\n1. Fenoy ny taratasy fangatahana miaraka amin’ny mombamomba anao: ${fields}.\n2. Ampidiro ireo antontan-taratasy ilaina: ${attachmentText}\n3. Hamarino ny antontan-taratasy ary alefaso ao amin’ny kaontinao e-Préfecture.`
-      : `Pour la démarche « ${model.title} » :\n1. Remplissez le formulaire avec les informations suivantes : ${fields}.\n2. Joignez les pièces obligatoires : ${attachmentText}\n3. Vérifiez le dossier puis soumettez-le depuis votre espace e-Préfecture.`;
+      ? `Fomba fangatahana ${model.titleMg}\n1. Fenoy ny taratasy fangatahana miaraka amin’ny mombamomba anao: ${fields}.\n2. Ampidiro ireo antontan-taratasy ilaina: ${attachmentText}\n3. Hamarino ny antontan-taratasy ary alefaso ao amin’ny kaontinao e-Servisy.`
+      : `Pour la démarche « ${model.title} » :\n1. Remplissez le formulaire avec les informations suivantes : ${fields}.\n2. Joignez les pièces obligatoires : ${attachmentText}\n3. Vérifiez le dossier puis soumettez-le depuis votre espace e-Servisy.`;
   }
 
   private termesRecherche(question: string) {

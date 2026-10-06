@@ -374,7 +374,7 @@ export class RequestsService {
       try {
         if (signature && existsSync(signature.storagePath)) document.image(signature.storagePath, { fit: [140, 80], align: 'right' });
       } catch { }
-      document.moveDown(3).fontSize(9).text('Document généré par la plateforme e-Préfecture d’Ihosy. Toute vérification doit être effectuée auprès du service émetteur.', { align: 'center' });
+      document.moveDown(3).fontSize(9).text('Document généré par la plateforme e-Servisy d’Ihosy. Toute vérification doit être effectuée auprès du service émetteur.', { align: 'center' });
       document.end();
     });
   }

@@ -1,4 +1,4 @@
-# Conception Merise - e-Prefecture d'Ihosy
+# Conception Merise - e-Servisy d'Ihosy
 
 Ce dossier rassemble la conception fonctionnelle et les modeles de donnees de la plateforme.
 
