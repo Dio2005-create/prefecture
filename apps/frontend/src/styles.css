@@ -1017,6 +1017,19 @@ tbody tr:hover { background: #f6f8fc; }
 .backoffice-shell .table-panel { max-width: 100%; overflow-x: auto; }
 .backoffice-shell .admin-filter-heading { min-width: 0; }
 .backoffice-shell .filter-tabs { max-width: 100%; }
+.backoffice-shell .sidebar {
+	position: sticky;
+	top: 0;
+	height: 100vh;
+	height: 100dvh;
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior-y: contain;
+	scrollbar-width: thin;
+	scrollbar-color: rgba(181, 200, 199, .45) transparent;
+}
+.backoffice-shell .sidebar nav { flex: 0 0 auto; }
+.backoffice-shell .sidebar-foot { flex: 0 0 auto; }
 
 @media (max-width: 900px) {
 	.backoffice-shell .sidebar {
