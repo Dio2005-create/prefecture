@@ -20,7 +20,7 @@ type AuthContextValue = {
   restoringSession: boolean;
   user: AuthUser | null;
   login: (username: string, password: string) => Promise<AuthUser | null>;
-  register: (payload: { email: string; password: string; phone?: string; cin?: string; nom?: string }) => Promise<AuthUser | null>;
+  register: (payload: { email: string; password: string; phone?: string; cin?: string; nom?: string; isAdult: boolean }) => Promise<AuthUser | null>;
   logout: () => Promise<void>;
   updateUser: (user: AuthUser) => void;
 };
@@ -91,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return authenticatedUser;
     } catch { return null; }
   };
-  const register = async (payload: { email: string; password: string; phone?: string; cin?: string; nom?: string }) => {
+  const register = async (payload: { email: string; password: string; phone?: string; cin?: string; nom?: string; isAdult: boolean }) => {
     try {
       const session = await authService.register(payload);
       localStorage.setItem(SESSION_KEY, session.token);

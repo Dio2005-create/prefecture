@@ -46,17 +46,21 @@ export class AuthService {
     };
   }
 
-  async register(input: { email: string; password: string; phone?: string; cin?: string; nom?: string }) {
+  async register(input: { email: string; password: string; phone?: string; cin?: string; nom?: string; isAdult?: boolean }) {
     const email = input.email.trim();
     const password = input.password.trim();
     if (!email || !password) throw new UnauthorizedException('Email et mot de passe requis');
+    if (typeof input.isAdult !== 'boolean') throw new UnauthorizedException('Veuillez indiquer si vous avez 18 ans ou plus');
+    const cin = input.cin?.trim();
+    if (input.isAdult && !cin) throw new UnauthorizedException('La CIN est obligatoire à partir de 18 ans');
+    if (input.isAdult && !/^\d{12}$/.test(cin ?? '')) throw new UnauthorizedException('La CIN doit contenir exactement 12 chiffres');
 
     const existing = await this.prisma.user.findFirst({
       where: {
         OR: [
           { email: { equals: email, mode: 'insensitive' } },
           ...(input.phone ? [{ phone: { equals: input.phone, mode: 'insensitive' as const } }] : []),
-          ...(input.cin ? [{ cin: { equals: input.cin, mode: 'insensitive' as const } }] : []),
+          ...(input.isAdult && cin ? [{ cin: { equals: cin, mode: 'insensitive' as const } }] : []),
         ],
       },
     });
@@ -67,7 +71,7 @@ export class AuthService {
       data: {
         email,
         phone: input.phone?.trim() || null,
-        cin: input.cin?.trim() || null,
+        cin: input.isAdult ? cin : null,
         nom: input.nom?.trim() || null,
         passwordHash: await this.hashPassword(password),
         role: 'CITIZEN',

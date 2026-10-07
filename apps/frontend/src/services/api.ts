@@ -16,7 +16,7 @@ api.interceptors.response.use((response) => response, (error: unknown) => {
   return Promise.reject(error);
 });
 export const authService = {
-  register: async (payload: { email: string; password: string; phone?: string; cin?: string; nom?: string }) =>
+  register: async (payload: { email: string; password: string; phone?: string; cin?: string; nom?: string; isAdult: boolean }) =>
     (await api.post<{ token: string; user?: unknown }>('/auth/register', payload)).data,
   login: async (identifier: string, password: string) => (await api.post<{ token: string; user?: unknown }>('/auth/login', { identifier, password })).data,
   validate: async (token: string) => (await api.post('/auth/validate', {}, { headers: { Authorization: `Bearer ${token}` } })).data,

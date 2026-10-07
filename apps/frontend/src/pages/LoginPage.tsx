@@ -12,6 +12,7 @@ export function LoginPage() {
   const [nom, setNom] = useState('');
   const [phone, setPhone] = useState('');
   const [cin, setCin] = useState('');
+  const [isAdult, setIsAdult] = useState<boolean | null>(null);
   const [error, setError] = useState(false);
   const { login, register } = useAuth();
   const { t } = usePreferences();
@@ -20,7 +21,7 @@ export function LoginPage() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const user = isRegistering
-      ? await register({ email: identifier, password, nom, phone: phone || undefined, cin: cin || undefined })
+      ? await register({ email: identifier, password, nom, phone: phone || undefined, cin: isAdult ? cin : undefined, isAdult: isAdult === true })
       : await login(identifier, password);
     if (user) {
       const defaultPath = user.roles.includes('CITIZEN') ? '/front/accueil' : '/back/accueil';
@@ -84,7 +85,7 @@ export function LoginPage() {
 
           <form onSubmit={submit}>
             <label>
-              {t('Email')}
+              {t(isRegistering ? 'Email' : 'Email, téléphone ou CIN')}
               <input
                 value={identifier}
                 onChange={(event) => setIdentifier(event.target.value)}
@@ -95,8 +96,15 @@ export function LoginPage() {
 
             {isRegistering && <>
               <label>{t('Nom complet')}<input value={nom} onChange={(event) => setNom(event.target.value)} autoComplete="name" required /></label>
-              <label>{t('Téléphone (optionnel)')}<input value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" /></label>
-              <label>{t('CIN (optionnel)')}<input value={cin} onChange={(event) => setCin(event.target.value)} /></label>
+              <label>{t('Téléphone (optionnel, utilisable pour la connexion)')}<input value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" /></label>
+              <fieldset className="login-age-field">
+                <legend>{t('Avez-vous 18 ans ou plus ?')}</legend>
+                <div className="login-age-options">
+                  <label><input type="radio" name="isAdult" value="yes" required checked={isAdult === true} onChange={() => setIsAdult(true)} />{t('Oui')}</label>
+                  <label><input type="radio" name="isAdult" value="no" required checked={isAdult === false} onChange={() => { setIsAdult(false); setCin(''); }} />{t('Non')}</label>
+                </div>
+              </fieldset>
+              {isAdult && <label>{t('CIN (12 chiffres)')}<input value={cin} onChange={(event) => setCin(event.target.value)} inputMode="numeric" maxLength={12} pattern="[0-9]{12}" autoComplete="off" required /></label>}
             </>}
 
             <label>
@@ -124,7 +132,7 @@ export function LoginPage() {
             {error && <p className="error-message">{t('Identifiant ou mot de passe incorrect.')}</p>}
             <button className="button primary full" type="submit">{t(isRegistering ? 'Créer mon compte' : 'Se connecter')}</button>
           </form>
-          <button className="text-link auth-switch" type="button" onClick={() => { setIsRegistering((value) => !value); setError(false); }}>
+          <button className="text-link auth-switch" type="button" onClick={() => { setIsRegistering((value) => !value); setIsAdult(null); setCin(''); setError(false); }}>
             {t(isRegistering ? 'J’ai déjà un compte' : 'Créer un compte citoyen')}
           </button>
         </div>

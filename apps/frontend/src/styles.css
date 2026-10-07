@@ -71,6 +71,11 @@
 .login-panel form > label:nth-of-type(3) { animation-delay: 360ms; }
 .login-panel form > label:nth-of-type(4) { animation-delay: 430ms; }
 .login-panel label { display: grid; gap: 7px; color: #42534d; font-size: 12px; font-weight: 700; }
+.login-age-field { min-width: 0; margin: 0; padding: 0; border: 0; }
+.login-age-field legend { margin-bottom: 7px; font-size: 12px; font-weight: 700; }
+.login-age-options { display: flex; gap: 20px; }
+.login-age-options label { display: flex; align-items: center; gap: 7px; }
+.login-age-options input { width: 16px; min-height: 16px; margin: 0; padding: 0; accent-color: #3c6970; }
 .login-panel input { min-height: 43px; padding: 0 12px; border: 1px solid #d4dfda; background: #fff; color: #17212b; outline: none; }
 .login-panel input:focus { border-color: #3c6970; box-shadow: 0 0 0 3px rgba(60, 105, 112, 0.13); }
 .password-field { position: relative; display: block; }

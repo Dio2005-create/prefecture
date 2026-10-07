@@ -7,7 +7,7 @@ export class AuthController {
 
   @Post('register')
   register(
-    @Body() body: { email?: string; password?: string; phone?: string; cin?: string; nom?: string },
+    @Body() body: { email?: string; password?: string; phone?: string; cin?: string; nom?: string; isAdult?: boolean },
   ) {
     return this.auth.register({
       email: body.email ?? '',
@@ -15,6 +15,7 @@ export class AuthController {
       phone: body.phone,
       cin: body.cin,
       nom: body.nom,
+      isAdult: body.isAdult,
     });
   }
 
