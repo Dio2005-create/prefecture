@@ -34,12 +34,12 @@ export const requestRequirements: Record<RequestType, RequestRequirements> = {
     attachments: [required('acte-naissance-integral', 'Copie intégrale de l’acte de naissance'), required('residence', 'Certificat de résidence'), optional('livret-parents', 'Livret de famille ou acte de mariage des parents (si applicable)'), required('acte-naissance-parent', 'Acte de naissance du père ou de la mère (si parents non mariés)')],
   },
   CIN_REQUEST: {
-    fields: [field('nom', 'Nom et prénoms'), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('nomPere', 'Nom du père'), field('nomMere', 'Nom de la mère'), field('adresse', 'Adresse actuelle', 'textarea'), field('profession', 'Profession'), field('telephone', 'Téléphone')],
-    attachments: [required('acte-naissance', 'Acte de naissance (moins d’un an)'), required('residence', 'Certificat de résidence (moins de 3 mois)'), required('photos', 'Photos d’identité', { multiple: true, minFiles: 2 })],
+    fields: [field('nom', 'Nom et prénoms'), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('nomPere', 'Nom du père'), field('nomMere', 'Nom de la mère'), field('adresse', 'Adresse actuelle', 'textarea'), field('profession', 'Profession'), field('telephone', 'Téléphone'), field('tailleCm', 'Taille (cm)', 'number')],
+    attachments: [required('acte-naissance', 'Acte de naissance (moins d’un an)'), required('residence', 'Certificat de résidence (moins de 3 mois)'), required('photos', 'Photo d’identité 4 x 4', { minFiles: 1 })],
   },
   CIN_RENEWAL: {
-    fields: [field('nom', 'Nom et prénoms'), field('cin', 'Ancien numéro de CIN'), field('dateDelivranceCin', 'Date de délivrance de l’ancienne CIN', 'date'), field('dateNaissance', 'Date de naissance', 'date'), field('adresse', 'Adresse actuelle', 'textarea'), field('motif', 'Motif (usure, perte ou autre)', 'textarea')],
-    attachments: [...cinPair('ancienne-cin', 'Ancienne CIN'), required('residence', 'Certificat de résidence'), required('photos', 'Photos d’identité', { multiple: true }), optional('declaration-perte', 'Déclaration de perte (si applicable)')],
+    fields: [field('nom', 'Nom et prénoms'), field('cin', 'Ancien numéro de CIN'), field('dateDelivranceCin', 'Date de délivrance de l’ancienne CIN', 'date'), field('dateNaissance', 'Date de naissance', 'date'), field('adresse', 'Adresse actuelle', 'textarea'), field('motif', 'Motif (usure, perte ou autre)', 'textarea'), field('tailleCm', 'Taille (cm)', 'number')],
+    attachments: [...cinPair('ancienne-cin', 'Ancienne CIN'), required('residence', 'Certificat de résidence'), required('photos', 'Photo d’identité 4 x 4'), optional('declaration-perte', 'Déclaration de perte (si applicable)')],
   },
   GOOD_CHARACTER_CERTIFICATE: {
     fields: [field('nom', 'Nom et prénoms'), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('nomPere', 'Nom du père'), field('nomMere', 'Nom de la mère'), field('cin', 'Numéro CIN'), field('dateDelivranceCin', 'Date de délivrance de la CIN', 'date'), field('profession', 'Profession'), field('adresse', 'Domicile', 'textarea')],
@@ -96,3 +96,18 @@ export const requestRequirements: Record<RequestType, RequestRequirements> = {
 };
 
 export const getRequestRequirements = (type: RequestType) => requestRequirements[type];
+
+export function getRequestCompleteness(
+  type: RequestType,
+  formData: Record<string, unknown>,
+  attachments: Array<{ label?: string | null }>,
+) {
+  const requirements = getRequestRequirements(type);
+  const missingFields = requirements.fields
+    .filter((item) => item.required && (formData[item.name] === undefined || String(formData[item.name]).trim() === ''))
+    .map((item) => item.label);
+  const missingAttachments = requirements.attachments
+    .filter((item) => item.required && attachments.filter((attachment) => attachment.label === item.label).length < (item.minFiles ?? 1))
+    .map((item) => item.label);
+  return { missingFields, missingAttachments };
+}

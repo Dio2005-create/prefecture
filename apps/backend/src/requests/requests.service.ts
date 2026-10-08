@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { RequestType } from '@prisma/client';
 import { PaymentProvider } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { getRequestRequirements } from './request-requirements';
+import { getRequestCompleteness, getRequestRequirements } from './request-requirements';
 import { requestModels } from './request-models';
 import { PDFDocument as EditablePDFDocument } from 'pdf-lib';
 
@@ -189,6 +189,9 @@ export class RequestsService {
     if (files.some((file) => !allowedMimeTypes.includes(file.mimetype ?? '') || (file.size ?? 0) > 10 * 1024 * 1024)) {
       throw new BadRequestException('Chaque pièce doit être un PDF, JPG ou PNG de 10 Mo maximum');
     }
+    if (labels.some((label, index) => label === 'Photo d’identité 4 x 4' && !['image/jpeg', 'image/png'].includes(files[index]?.mimetype ?? ''))) {
+      throw new BadRequestException('La photo d’identité 4 x 4 doit être une image JPG ou PNG');
+    }
     const created = await this.create(
       userId,
       data as CreateRequestDto,
@@ -220,6 +223,10 @@ export class RequestsService {
       let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
       if (today.getUTCMonth() < birthDate.getUTCMonth() || (today.getUTCMonth() === birthDate.getUTCMonth() && today.getUTCDate() < birthDate.getUTCDate())) age -= 1;
       if (age < 18) throw new BadRequestException('La demande de CIN est réservée aux personnes âgées de 18 ans et plus');
+      const height = Number(formData.tailleCm);
+      if (!Number.isInteger(height) || height < 100 || height > 250) {
+        throw new BadRequestException('La taille doit être renseignée en centimètres entre 100 et 250');
+      }
     }
   }
 
@@ -305,6 +312,9 @@ export class RequestsService {
     if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype ?? '') || (file.size ?? 0) > 10 * 1024 * 1024) {
       throw new BadRequestException('La pièce doit être un PDF, JPG ou PNG de 10 Mo maximum');
     }
+    if (label === 'Photo d’identité 4 x 4' && !['image/jpeg', 'image/png'].includes(file.mimetype ?? '')) {
+      throw new BadRequestException('La photo d’identité 4 x 4 doit être une image JPG ou PNG');
+    }
 
     return this.prisma.$transaction(async (transaction) => {
       if (!isBackOffice) {
@@ -337,6 +347,9 @@ export class RequestsService {
     if (!isBackOffice) this.ensureCitizenCanEdit(attachment.request.status);
     if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype ?? '') || (file.size ?? 0) > 10 * 1024 * 1024) {
       throw new BadRequestException('La pièce doit être un PDF, JPG ou PNG de 10 Mo maximum');
+    }
+    if (attachment.label === 'Photo d’identité 4 x 4' && !['image/jpeg', 'image/png'].includes(file.mimetype ?? '')) {
+      throw new BadRequestException('La photo d’identité 4 x 4 doit être une image JPG ou PNG');
     }
 
     const updated = await this.prisma.$transaction(async (transaction) => {
@@ -374,6 +387,16 @@ export class RequestsService {
     const isBackOffice = user.role === 'ADMIN' || user.roles?.includes('ADMIN');
     if (!isBackOffice && request.userId !== user.id) throw new ForbiddenException('Vous ne pouvez pas télécharger cette demande');
     if (request.status !== 'APPROVED') throw new ForbiddenException('Le document sera disponible après approbation');
+    if (request.type === RequestType.CIN_REQUEST || request.type === RequestType.CIN_RENEWAL) {
+      throw new ForbiddenException('La CIN doit être retirée au guichet après la prise des empreintes digitales');
+    }
+    const formData = request.formData && typeof request.formData === 'object' && !Array.isArray(request.formData)
+      ? request.formData as Record<string, unknown>
+      : {};
+    const completeness = getRequestCompleteness(request.type, formData, request.attachments);
+    if (completeness.missingFields.length || completeness.missingAttachments.length) {
+      throw new BadRequestException(`Le dossier est incomplet : ${[...completeness.missingFields, ...completeness.missingAttachments].join(', ')}`);
+    }
     const model = this.getModelPdf(request.type);
     const marks = await this.prisma.officialMark.findMany({ where: { isActive: true, kind: { in: ['STAMP', 'SIGNATURE'] } } });
 
@@ -385,9 +408,12 @@ export class RequestsService {
         try {
           const templatePdf = await EditablePDFDocument.load(readFileSync(model.path));
           const detailsPdf = await EditablePDFDocument.load(Buffer.concat(chunks));
-          const detailsPages = await templatePdf.copyPages(detailsPdf, detailsPdf.getPageIndices());
-          detailsPages.forEach((page) => templatePdf.addPage(page));
-          resolve(Buffer.from(await templatePdf.save()));
+          const completedPdf = await EditablePDFDocument.create();
+          const completedPages = await completedPdf.copyPages(detailsPdf, detailsPdf.getPageIndices());
+          completedPages.forEach((page) => completedPdf.addPage(page));
+          const templatePages = await completedPdf.copyPages(templatePdf, templatePdf.getPageIndices());
+          templatePages.forEach((page) => completedPdf.addPage(page));
+          resolve(Buffer.from(await completedPdf.save()));
         } catch (error) {
           reject(error);
         }
@@ -411,26 +437,15 @@ export class RequestsService {
         ACCREDITATION: 'DECISION D’AGREMENT',
         ADMINISTRATIVE_AUTHORIZATION: 'AUTORISATION ADMINISTRATIVE',
       };
-      const fieldLabels: Record<string, string> = {
-        nom: 'Nom', prenom: 'Prénom', cin: 'CIN', adresse: 'Adresse', motif: 'Motif',
-        nomDemandeur: 'Nom et prénoms du demandeur', adresseDemandeur: 'Adresse du demandeur', cinDemandeur: 'CIN du demandeur', lienAvecPersonne: 'Lien avec la personne concernée', anneeNumeroActe: 'Année / numéro de l’acte',
-        dateNaissance: 'Date de naissance', lieuNaissance: 'Lieu de naissance', nomPere: 'Nom du père',
-        nomMere: 'Nom de la mère', dateDelivranceCin: 'Date de délivrance de la CIN', lieuDelivranceCin: 'Lieu de délivrance de la CIN', adresseActuelle: 'Adresse actuelle', lotLieuDit: 'Lot / lieu-dit', adresseTerrain: 'Adresse du terrain', surface: 'Surface (m²)',
-        natureProjet: 'Nature du projet', referenceParcelle: 'Référence parcelle', nomEntreprise: 'Entreprise',
-        activite: 'Activité', representant: 'Représentant', immatriculation: 'Immatriculation', profession: 'Profession', telephone: 'Téléphone', cinNif: 'CIN / NIF',
-        marqueModele: 'Marque / type du véhicule', numeroChassis: 'Numéro de châssis', ancienneCarteGrise: 'Ancienne carte grise', puissanceFiscale: 'Puissance fiscale', superficie: 'Superficie approximative', formeJuridique: 'Forme juridique',
-        objetPerdu: 'Objet perdu',         typeDocument: 'Matériel perdu', materielsPerdus: 'Matériel perdu', lieuPerte: 'Lieu de perte', lieuCirconstances: 'Lieu / circonstances',
-        datePerte: 'Date de perte', document: 'Document', objet: 'Objet', lieu: 'Lieu',
-        dateEvenement: 'Date de l’événement', urgence: 'Urgence', nomAssociation: 'Association / ONG',
-        president: 'Président', nomPresident: 'Nom du président', cinPresident: 'CIN du président', adressePresident: 'Adresse du président', telephonePresident: 'Téléphone du président', sigle: 'Sigle', objetSocial: 'Objet social', siege: 'Siège', membres: 'Membres',
-        nomEvenement: 'Événement', organisateur: 'Organisateur', dateDebut: 'Date de début',
-        nomOrganisateur: 'Nom et prénoms de l’organisateur', cinOrganisateur: 'CIN de l’organisateur', heureDebutFin: 'Heure de début / fin', nombreSignatures: 'Nombre de signatures à légaliser', dateFin: 'Date de fin', participants: 'Participants', nomStructure: 'Structure',
-        natureAutorisation: 'Nature de l’autorisation demandée',
-        paysOrigine: 'Pays d’origine',
-      };
-      const formData = request.formData && typeof request.formData === 'object' && !Array.isArray(request.formData)
-        ? request.formData as Record<string, unknown>
-        : {};
+      const requestRequirements = getRequestRequirements(request.type);
+      const knownFields = new Set(requestRequirements.fields.map((field) => field.name));
+      const printableFields = requestRequirements.fields.map((field) => ({
+        label: field.label,
+        value: formData[field.name],
+      }));
+      Object.entries(formData)
+        .filter(([key]) => !knownFields.has(key))
+        .forEach(([label, value]) => printableFields.push({ label, value }));
 
       document.fontSize(18).text('PREFECTURE D’IHOSY', { align: 'center' });
       document.moveDown(0.5).fontSize(12).text('DOCUMENT ADMINISTRATIF OFFICIEL', { align: 'center' });
@@ -441,9 +456,19 @@ export class RequestsService {
       document.text(`Date de délivrance : ${new Date().toLocaleDateString('fr-FR')}`);
       document.moveDown(2).fontSize(14).text(labels[request.type] ?? request.title ?? request.service.nameFr, { align: 'center' });
       document.moveDown(1).fontSize(11).text('Informations du dossier', { underline: true });
-      Object.entries(formData).forEach(([key, value]) => {
+      printableFields.forEach(({ label, value }) => {
         const displayValue = typeof value === 'object' ? JSON.stringify(value) : String(value ?? '');
-        if (displayValue.trim()) document.fontSize(10).text(`${fieldLabels[key] ?? key} : ${displayValue}`);
+        if (displayValue.trim()) {
+          const formattedValue = (request.type === RequestType.CIN_REQUEST || request.type === RequestType.CIN_RENEWAL) && label === 'Taille (cm)'
+            ? `${(Number(value) / 100).toFixed(2).replace('.', ',')} m`
+            : displayValue;
+          document.fontSize(10).text(`${label} : ${formattedValue}`);
+        }
+      });
+      document.moveDown(1).fontSize(11).text('Pièces justificatives reçues', { underline: true });
+      requestRequirements.attachments.forEach((requirement) => {
+        const count = request.attachments.filter((attachment) => attachment.label === requirement.label).length;
+        if (count > 0) document.fontSize(10).text(`${requirement.label} : ${count} fichier(s) reçu(s)`);
       });
       const templateVariables: Record<string, unknown> = {
         ...formData,
