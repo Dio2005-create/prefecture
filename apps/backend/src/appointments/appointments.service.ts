@@ -8,29 +8,57 @@ export class AppointmentsService {
 
   async listAvailable() {
     const now = new Date();
-    const horizon = new Date(now);
-    horizon.setDate(horizon.getDate() + 30);
-    const booked = await this.prisma.appointment.findMany({
-      where: { startsAt: { gte: now, lt: horizon }, status: { in: [AppointmentStatus.PENDING, AppointmentStatus.BOOKED] } },
-      select: { startsAt: true, endsAt: true },
+    const horizon = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+    return this.prisma.appointmentSlot.findMany({
+      where: {
+        isActive: true,
+        startsAt: { gt: now, lt: horizon },
+        appointments: { none: { status: { in: [AppointmentStatus.PENDING, AppointmentStatus.BOOKED] } } },
+      },
+      orderBy: { startsAt: 'asc' },
     });
-    const slots: Array<{ startsAt: string; endsAt: string; office: string }> = [];
+  }
 
-    for (const day = new Date(now); day < horizon; day.setDate(day.getDate() + 1)) {
-      const weekDay = day.getDay();
-      if (weekDay === 0 || weekDay === 6) continue;
-      for (const hour of [8, 9, 10, 11, 13, 14, 15, 16]) {
-        for (const minutes of [0, 30]) {
-          const startsAt = new Date(day);
-          startsAt.setHours(hour, minutes, 0, 0);
-          const endsAt = new Date(startsAt.getTime() + 30 * 60 * 1000);
-          if (startsAt <= now || booked.some((appointment) => appointment.startsAt < endsAt && appointment.endsAt > startsAt)) continue;
-          slots.push({ startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString(), office: 'Guichet général' });
-        }
-      }
+  listSlotsForAdmin() {
+    return this.prisma.appointmentSlot.findMany({
+      orderBy: { startsAt: 'asc' },
+      include: {
+        appointments: {
+          where: { status: { in: [AppointmentStatus.PENDING, AppointmentStatus.BOOKED] } },
+          select: { id: true },
+        },
+      },
+    });
+  }
+
+  async createSlot(input: { startsAt: string; endsAt: string; office?: string }) {
+    const startsAt = new Date(input.startsAt);
+    const endsAt = new Date(input.endsAt);
+    if (Number.isNaN(startsAt.getTime()) || startsAt <= new Date() || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
+      throw new ConflictException('Les dates et heures du créneau sont invalides');
     }
+    const overlappingSlot = await this.prisma.appointmentSlot.findFirst({
+      where: { startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
+      select: { id: true },
+    });
+    if (overlappingSlot) throw new ConflictException('Un créneau existe déjà à ces horaires');
+    try {
+      return await this.prisma.appointmentSlot.create({
+        data: { startsAt, endsAt, office: input.office?.trim() || 'Guichet général' },
+      });
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002') {
+        throw new ConflictException('Un créneau existe déjà à ces horaires');
+      }
+      throw error;
+    }
+  }
 
-    return slots.slice(0, 50);
+  async updateSlot(id: string, isActive: boolean) {
+    const slot = await this.prisma.appointmentSlot.findUnique({ where: { id } });
+    if (!slot) throw new NotFoundException('Créneau introuvable');
+    if (isActive && slot.startsAt <= new Date()) throw new ConflictException('Un créneau passé ne peut pas être réactivé');
+    return this.prisma.appointmentSlot.update({ where: { id }, data: { isActive } });
   }
 
   listByUser(userId: string) {
@@ -44,17 +72,32 @@ export class AppointmentsService {
     });
   }
 
-  async book(userId: string, input: { startsAt: string; requestId?: string; notes?: string }) {
-    const startsAt = new Date(input.startsAt);
-    if (Number.isNaN(startsAt.getTime()) || startsAt <= new Date()) throw new ConflictException('Créneau invalide');
-    const endsAt = new Date(startsAt.getTime() + 30 * 60 * 1000);
-    const conflict = await this.prisma.appointment.findFirst({ where: { status: AppointmentStatus.BOOKED, startsAt: { lt: endsAt }, endsAt: { gt: startsAt } } });
-    if (conflict) throw new ConflictException('Ce créneau est déjà réservé');
+  async book(userId: string, input: { slotId: string; requestId?: string; notes?: string }) {
     if (input.requestId) {
       const request = await this.prisma.serviceRequest.findFirst({ where: { id: input.requestId, userId } });
       if (!request) throw new ForbiddenException('Demande introuvable');
     }
-    return this.prisma.appointment.create({ data: { userId, requestId: input.requestId, startsAt, endsAt, notes: input.notes, status: AppointmentStatus.PENDING } });
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "AppointmentSlot" WHERE "id" = ${input.slotId} FOR UPDATE`;
+      const slot = await tx.appointmentSlot.findUnique({ where: { id: input.slotId } });
+      if (!slot || !slot.isActive || slot.startsAt <= new Date()) throw new ConflictException('Ce créneau n’est plus disponible');
+      const existingAppointment = await tx.appointment.findFirst({
+        where: { slotId: slot.id, status: { in: [AppointmentStatus.PENDING, AppointmentStatus.BOOKED] } },
+      });
+      if (existingAppointment) throw new ConflictException('Ce créneau est déjà réservé');
+      return tx.appointment.create({
+        data: {
+          userId,
+          requestId: input.requestId,
+          slotId: slot.id,
+          startsAt: slot.startsAt,
+          endsAt: slot.endsAt,
+          office: slot.office,
+          notes: input.notes,
+          status: AppointmentStatus.PENDING,
+        },
+      });
+    });
   }
 
   async updateStatus(id: string, status: AppointmentStatus) {

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Post, Req, Res, UploadedFile, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req, Res, UploadedFile, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import type { Response } from 'express';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '../auth/auth.guard';
@@ -43,6 +43,12 @@ export class RequestsController {
   @Get()
   list(@Req() req: { user?: { id: string } }) {
     return this.requestsService.listByUser(req.user?.id ?? '');
+  }
+
+  @Patch(':id')
+  update(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user?: { id: string } }, @Body() body: { title?: string; description?: string; formData?: Record<string, unknown> }) {
+    if (!req.user) throw new BadRequestException('Utilisateur non authentifié');
+    return this.requestsService.updateByCitizen(id, req.user.id, body);
   }
 
   @Post()
@@ -106,9 +112,23 @@ export class RequestsController {
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: { path: string; originalname: string; mimetype?: string; size?: number } | undefined,
     @Req() req: { user?: { id: string; roles?: string[]; role?: string } },
+    @Body() body: { label?: string },
   ) {
     if (!file) throw new BadRequestException('Le fichier est obligatoire');
     if (!req.user) throw new BadRequestException('Utilisateur non authentifié');
-    return this.requestsService.addAttachment(id, req.user, file);
+    return this.requestsService.addAttachment(id, req.user, file, body.label);
+  }
+
+  @Patch(':id/attachments/:attachmentId')
+  @UseInterceptors(FileInterceptor('file', { dest: process.env.UPLOAD_DIR ?? './uploads' }))
+  replaceAttachment(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @UploadedFile() file: { path: string; originalname: string; mimetype?: string; size?: number } | undefined,
+    @Req() req: { user?: { id: string; roles?: string[]; role?: string } },
+  ) {
+    if (!file) throw new BadRequestException('Le nouveau fichier est obligatoire');
+    if (!req.user) throw new BadRequestException('Utilisateur non authentifié');
+    return this.requestsService.replaceAttachment(id, attachmentId, req.user, file);
   }
 }

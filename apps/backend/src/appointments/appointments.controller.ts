@@ -1,14 +1,14 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { AppointmentStatus } from '@prisma/client';
-import { IsDateString, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { AuthGuard } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { AppointmentsService } from './appointments.service';
 
 class BookAppointmentDto {
-  @IsDateString()
-  startsAt!: string;
+  @IsUUID()
+  slotId!: string;
 
   @IsOptional()
   @IsUUID()
@@ -18,6 +18,24 @@ class BookAppointmentDto {
   @IsString()
   @MaxLength(500)
   notes?: string;
+}
+
+class CreateAppointmentSlotDto {
+  @IsDateString()
+  startsAt!: string;
+
+  @IsDateString()
+  endsAt!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  office?: string;
+}
+
+class UpdateAppointmentSlotDto {
+  @IsBoolean()
+  isActive!: boolean;
 }
 
 class UpdateAppointmentStatusDto {
@@ -40,6 +58,23 @@ export class AppointmentsController {
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
   listForAdmin() { return this.appointments.listAll(); }
+
+  @Get('admin/slots')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  listSlotsForAdmin() { return this.appointments.listSlotsForAdmin(); }
+
+  @Post('admin/slots')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  createSlot(@Body() body: CreateAppointmentSlotDto) { return this.appointments.createSlot(body); }
+
+  @Patch('admin/slots/:id')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  updateSlot(@Param('id', ParseUUIDPipe) id: string, @Body() body: UpdateAppointmentSlotDto) {
+    return this.appointments.updateSlot(id, body.isActive);
+  }
 
   @Patch('admin/:id/status')
   @UseGuards(RolesGuard)

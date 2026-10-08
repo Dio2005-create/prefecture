@@ -197,8 +197,19 @@ async function seedDocumentTemplates() {
     isActive: true,
   }));
 
-  await prisma.documentTemplate.deleteMany();
-  await prisma.documentTemplate.createMany({ data: templates });
+  for (const template of templates) {
+    await prisma.documentTemplate.upsert({
+      where: { requestType: template.requestType },
+      update: {
+        name: template.name,
+        storagePath: template.storagePath,
+        originalName: template.originalName,
+        mimeType: template.mimeType,
+        isActive: true,
+      },
+      create: template,
+    });
+  }
   console.log(`✓ ${templates.length} modèles PDF fournis activés`);
 }
 

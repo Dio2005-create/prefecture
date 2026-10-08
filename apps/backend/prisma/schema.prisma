@@ -84,7 +84,7 @@ enum RequestType {
 
 model DocumentTemplate {
   id          String      @id @default(uuid())
-  requestType RequestType
+  requestType RequestType @unique
   name        String
   bodyText    String?
   storagePath String?
@@ -94,7 +94,6 @@ model DocumentTemplate {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  @@index([requestType, isActive])
 }
 
 model OfficialMark {
@@ -291,6 +290,7 @@ model Appointment {
   id         String            @id @default(uuid())
   userId     String
   requestId  String?
+  slotId     String?
   startsAt   DateTime
   endsAt     DateTime
   office     String            @default("Guichet général")
@@ -298,11 +298,27 @@ model Appointment {
   notes      String?
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
+  slot       AppointmentSlot?  @relation(fields: [slotId], references: [id], onDelete: SetNull)
   user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   request    ServiceRequest?   @relation(fields: [requestId], references: [id], onDelete: SetNull)
 
   @@index([startsAt, status])
   @@index([userId, status])
+  @@index([slotId, status])
+}
+
+model AppointmentSlot {
+  id           String        @id @default(uuid())
+  startsAt     DateTime
+  endsAt       DateTime
+  office       String        @default("Guichet général")
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  appointments Appointment[]
+
+  @@unique([startsAt, endsAt])
+  @@index([startsAt, isActive])
 }
 
 model Categorie {

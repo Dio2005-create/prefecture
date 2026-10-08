@@ -14,7 +14,7 @@ const appointmentStatusLabels: Record<string, string> = {
 };
 
 type Appointment = { id: string; startsAt: string; office: string; status: string };
-type AvailableSlot = { startsAt: string; endsAt: string; office: string };
+type AvailableSlot = { id: string; startsAt: string; endsAt: string; office: string };
 
 export function AppointmentsPage() {
   const { t, language } = usePreferences();
@@ -26,7 +26,7 @@ export function AppointmentsPage() {
   const { data: appointments = [], isLoading } = useQuery<Appointment[]>({ queryKey: ['appointments'], queryFn: appointmentService.list, refetchInterval: 3000 });
   const { data: availableSlots = [], isLoading: slotsLoading } = useQuery<AvailableSlot[]>({ queryKey: ['appointments', 'available'], queryFn: appointmentService.available, refetchInterval: 30000 });
   const booking = useMutation({
-    mutationFn: () => appointmentService.book({ startsAt: new Date(startsAt).toISOString(), notes }),
+    mutationFn: () => appointmentService.book({ slotId: startsAt, notes }),
     onSuccess: () => { setStartsAt(''); setNotes(''); void client.invalidateQueries({ queryKey: ['appointments'] }); },
   });
   const cancellation = useMutation({
@@ -46,8 +46,8 @@ export function AppointmentsPage() {
       <div className="appointment-form">
         <label>{t('Creneau disponible')}
           <select value={startsAt} onChange={(event) => setStartsAt(event.target.value)}>
-            <option value="">{slotsLoading ? t('Chargement des creneaux...') : t('Selectionner un creneau')}</option>
-            {availableSlots.map((slot) => <option key={slot.startsAt} value={slot.startsAt}>{new Date(slot.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR')} · {slot.office}</option>)}
+            <option value="">{slotsLoading ? t('Chargement des creneaux...') : availableSlots.length ? t('Selectionner un creneau') : t('Aucun créneau disponible')}</option>
+            {availableSlots.map((slot) => <option key={slot.id} value={slot.id}>{new Date(slot.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR')} · {slot.office}</option>)}
           </select>
         </label>
         <label>{t('Motif ou precision')}

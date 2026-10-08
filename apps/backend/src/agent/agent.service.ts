@@ -1,6 +1,6 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma, RequestStatus } from '@prisma/client';
+import { Prisma, RequestStatus, RequestType } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
@@ -19,9 +19,20 @@ export class AgentService {
   }
 
   async createTemplate(data: { requestType: string; name: string; bodyText?: string; storagePath: string; originalName: string; mimeType?: string }) {
-    return this.prisma.$transaction(async (transaction) => {
-      await transaction.documentTemplate.updateMany({ where: { requestType: data.requestType as any }, data: { isActive: false } });
-      return transaction.documentTemplate.create({ data: { ...data, requestType: data.requestType as any, isActive: true } });
+    const requestType = Object.values(RequestType).find((type) => type === data.requestType);
+    if (!requestType) throw new BadRequestException('Type de démarche inconnu');
+
+    return this.prisma.documentTemplate.upsert({
+      where: { requestType },
+      update: {
+        name: data.name,
+        bodyText: data.bodyText,
+        storagePath: data.storagePath,
+        originalName: data.originalName,
+        mimeType: data.mimeType,
+        isActive: true,
+      },
+      create: { ...data, requestType, isActive: true },
     });
   }
 

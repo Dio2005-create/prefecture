@@ -55,6 +55,19 @@ export const prefectureService = {
     form.append('file', file);
     return (await api.post(`/requests/${requestId}/attachments`, form)).data;
   },
+  addCitizenAttachment: async (requestId: string, file: File, label: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('label', label);
+    return (await api.post(`/requests/${requestId}/attachments`, form)).data;
+  },
+  replaceCitizenAttachment: async (requestId: string, attachmentId: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return (await api.patch(`/requests/${requestId}/attachments/${attachmentId}`, form)).data;
+  },
+  updateCitizenRequest: async (requestId: string, payload: { title: string; description: string; formData: Record<string, unknown> }) =>
+    (await api.patch<CitizenRequest>(`/requests/${requestId}`, payload)).data,
   downloadAttachment: async (requestId: string, attachmentId: string) =>
     (await api.get<Blob>(`/requests/${requestId}/attachments/${attachmentId}`, { responseType: 'blob' })).data,
   downloadPdf: async (requestId: string) => (await api.get<Blob>(`/requests/${requestId}/pdf`, { responseType: 'blob' })).data,
@@ -69,10 +82,13 @@ export const notificationService = {
 export const appointmentService = {
   available: async () => (await api.get('/appointments/available')).data,
   list: async () => (await api.get('/appointments')).data,
-  book: async (payload: { startsAt: string; requestId?: string; notes?: string }) => (await api.post('/appointments', payload)).data,
+  book: async (payload: { slotId: string; requestId?: string; notes?: string }) => (await api.post('/appointments', payload)).data,
   cancel: async (id: string) => (await api.delete(`/appointments/${id}`)).data,
   listForAdmin: async () => (await api.get('/appointments/admin')).data,
   updateStatus: async (id: string, status: 'BOOKED' | 'CANCELLED' | 'COMPLETED') => (await api.patch(`/appointments/admin/${id}/status`, { status })).data,
+  listSlotsForAdmin: async () => (await api.get('/appointments/admin/slots')).data,
+  createSlot: async (payload: { startsAt: string; endsAt: string; office?: string }) => (await api.post('/appointments/admin/slots', payload)).data,
+  updateSlot: async (id: string, isActive: boolean) => (await api.patch(`/appointments/admin/slots/${id}`, { isActive })).data,
 };
 
 export const userService = {

@@ -1,7 +1,7 @@
 import { Bell, CalendarDays, FileText, ShieldCheck, Users, Download, Power, Trash2, Eye, X } from 'lucide-react';
 import axios from 'axios';
 import { useEffect, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminService, appointmentService, documentService, notificationService, prefectureService, userService } from '../services/api';
 import { Loading, Pagination, Toast, useToast } from '../components/ui';
 import { useAuth } from '../auth';
@@ -162,6 +162,11 @@ export function AdminDocumentTemplatesPage() {
   const [file, setFile] = useState<File | null>(null);
   const [search, setSearch] = useState('');
   const [preview, setPreview] = useState<typeof templates[number] | null>(null);
+  const uniqueTemplates = Array.from(templates.reduce((byRequestType, template) => {
+    const existing = byRequestType.get(template.requestType);
+    if (!existing || (!existing.isActive && template.isActive)) byRequestType.set(template.requestType, template);
+    return byRequestType;
+  }, new Map<string, typeof templates[number]>()).values());
   const save = async () => {
     if (!name.trim() || !file) return;
     try { await adminService.saveTemplate(file, { requestType, name: name.trim() }); setName(''); setFile(null); await client.invalidateQueries({ queryKey: ['admin-templates'] }); notify('success', t('Modèle enregistré et activé.')); } catch { notify('error', t('Impossible d’enregistrer le modèle.')); }
@@ -184,7 +189,7 @@ export function AdminDocumentTemplatesPage() {
     </div>
     <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
       <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('Rechercher un modèle par son nom')} style={{ padding: 10 }} />
-      {isLoading ? <p>{t('Chargement...')}</p> : templates.filter((template) => template.name.toLowerCase().includes(search.toLowerCase())).map((template) => (
+      {isLoading ? <p>{t('Chargement...')}</p> : uniqueTemplates.filter((template) => template.name.toLowerCase().includes(search.toLowerCase())).map((template) => (
         <article className="recent-row" key={template.id}>
           <FileText size={18} />
           <span>
@@ -192,7 +197,7 @@ export function AdminDocumentTemplatesPage() {
             <small>{template.name} · {template.originalName ?? t('Fichier modèle')}</small>
           </span>
           <span className={`status ${template.isActive ? 'valide' : 'erreur'}`}>{t(template.isActive ? 'Actif' : 'Inactif')}</span>
-          <div className="mark-actions"><button className="button muted" onClick={() => void (template.isActive ? adminService.deactivateTemplate(template.id) : adminService.activateTemplate(template.id)).then(() => client.invalidateQueries({ queryKey: ['admin-templates'] }))}><Power size={13} />{t(template.isActive ? 'Désactiver' : 'Activer')}</button><button className="button" onClick={() => setPreview(template)}><Eye size={13} />{t('Visualiser')}</button><button className="button danger" onClick={() => void adminService.deleteTemplate(template.id).then(() => client.invalidateQueries({ queryKey: ['admin-templates'] }))}><Trash2 size={13} />{t('Supprimer')}</button></div>
+          <div className="mark-actions"><button className="button muted" onClick={() => void (template.isActive ? adminService.deactivateTemplate(template.id) : adminService.activateTemplate(template.id)).then(() => client.invalidateQueries({ queryKey: ['admin-templates'] }))}><Power size={13} />{t(template.isActive ? 'Désactiver' : 'Activer')}</button><button className="button" onClick={() => setPreview(template)}><Eye size={13} />{t('Visualiser')}</button></div>
         </article>
       ))}
     </div>
@@ -320,9 +325,80 @@ export function AdminAppointmentsPage() {
   const { t, language } = usePreferences();
   const client = useQueryClient();
   const { data: appointments = [], isLoading } = useQuery({ queryKey: ['admin-appointments'], queryFn: appointmentService.listForAdmin, refetchInterval: 3000 });
+  const { data: slots = [], isLoading: slotsLoading } = useQuery<Array<{ id: string; startsAt: string; endsAt: string; office: string; isActive: boolean; appointments: Array<{ id: string }> }>>({
+    queryKey: ['admin-appointment-slots'],
+    queryFn: appointmentService.listSlotsForAdmin,
+    refetchInterval: 10000,
+  });
+  const [slotDate, setSlotDate] = useState('');
+  const [slotStart, setSlotStart] = useState('');
+  const [slotEnd, setSlotEnd] = useState('');
+  const [slotOffice, setSlotOffice] = useState('Guichet général');
+  const createSlot = useMutation({
+    mutationFn: () => appointmentService.createSlot({
+      startsAt: new Date(`${slotDate}T${slotStart}`).toISOString(),
+      endsAt: new Date(`${slotDate}T${slotEnd}`).toISOString(),
+      office: slotOffice,
+    }),
+    onSuccess: () => {
+      setSlotStart('');
+      setSlotEnd('');
+      void client.invalidateQueries({ queryKey: ['admin-appointment-slots'] });
+      void client.invalidateQueries({ queryKey: ['appointments', 'available'] });
+    },
+  });
+  const updateSlot = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => appointmentService.updateSlot(id, isActive),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['admin-appointment-slots'] });
+      void client.invalidateQueries({ queryKey: ['appointments', 'available'] });
+    },
+  });
+  const slotError = [createSlot.error, updateSlot.error].find(Boolean);
+  const slotErrorMessage = slotError && axios.isAxiosError(slotError)
+    ? (slotError.response?.data as { message?: string } | undefined)?.message ?? 'Impossible de modifier les créneaux.'
+    : slotError ? 'Impossible de modifier les créneaux.' : '';
   const update = async (id: string, status: 'BOOKED' | 'CANCELLED' | 'COMPLETED') => {
     await appointmentService.updateStatus(id, status);
     await client.invalidateQueries({ queryKey: ['admin-appointments'] });
+    await client.invalidateQueries({ queryKey: ['admin-appointment-slots'] });
+    await client.invalidateQueries({ queryKey: ['appointments', 'available'] });
   };
-  return <section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Accueil physique')}</p><h1>{t('Gestion des rendez-vous')}</h1><p>{t('Confirmez, refusez ou clôturez les rendez-vous pris par les citoyens.')}</p>{isLoading ? <p>{t('Chargement...')}</p> : appointments.length === 0 ? <div className="empty-state"><CalendarDays size={28} /><span>{t('Aucun rendez-vous enregistré.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{appointments.map((appointment: { id: string; startsAt: string; office: string; status: string; user?: { nom?: string | null; email: string } }) => <div className="recent-row" key={appointment.id}><CalendarDays size={18} /><span><strong>{new Date(appointment.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR')}</strong><small>{appointment.user?.nom ?? appointment.user?.email} · {t(appointment.office)} · {t(appointment.status)}</small></span>{appointment.status === 'PENDING' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small primary" onClick={() => void update(appointment.id, 'BOOKED')}>{t('Confirmer')}</button><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button></span>}{appointment.status === 'BOOKED' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button><button className="button small appointment-complete" onClick={() => void update(appointment.id, 'COMPLETED')}>{t('Terminer')}</button></span>}</div>)}</div>}</section>;
+  const submitSlot = () => {
+    if (!slotDate || !slotStart || !slotEnd || new Date(`${slotDate}T${slotEnd}`) <= new Date(`${slotDate}T${slotStart}`)) return;
+    createSlot.mutate();
+  };
+  return <section className="panel" style={{ padding: 24 }}>
+    <p className="eyebrow">{t('Accueil physique')}</p>
+    <h1>{t('Gestion des rendez-vous')}</h1>
+    <p>{t('Confirmez, refusez ou clôturez les rendez-vous pris par les citoyens.')}</p>
+    <section className="request-form-section" style={{ marginTop: 20 }}>
+      <h2>{t('Configurer les créneaux disponibles')}</h2>
+      <p>{t('Ajoutez manuellement les dates et heures que les citoyens pourront réserver.')}</p>
+      <div className="request-form-grid">
+        <label className="request-field">{t('Date du créneau')}<input type="date" value={slotDate} onChange={(event) => setSlotDate(event.target.value)} /></label>
+        <label className="request-field">{t('Heure de début')}<input type="time" value={slotStart} onChange={(event) => setSlotStart(event.target.value)} /></label>
+        <label className="request-field">{t('Heure de fin')}<input type="time" value={slotEnd} onChange={(event) => setSlotEnd(event.target.value)} /></label>
+        <label className="request-field">{t('Guichet ou service')}<input value={slotOffice} maxLength={120} onChange={(event) => setSlotOffice(event.target.value)} /></label>
+      </div>
+      <button className="button primary" disabled={!slotDate || !slotStart || !slotEnd || slotEnd <= slotStart || createSlot.isPending} onClick={submitSlot}>
+        {t(createSlot.isPending ? 'Enregistrement...' : 'Ajouter ce créneau')}
+      </button>
+      {slotErrorMessage && <p className="error-message">{t(slotErrorMessage)}</p>}
+      <h3>{t('Créneaux configurés')}</h3>
+      {slotsLoading ? <p>{t('Chargement...')}</p> : slots.length === 0 ? <p>{t('Aucun créneau configuré.')}</p> : <div style={{ display: 'grid', gap: 8 }}>
+        {slots.map((slot) => <div className="recent-row" key={slot.id}>
+          <CalendarDays size={18} />
+          <span><strong>{new Date(slot.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR')} – {new Date(slot.endsAt).toLocaleTimeString(language === 'mg' ? 'mg-MG' : 'fr-FR', { hour: '2-digit', minute: '2-digit' })}</strong>
+            <small>{slot.office} · {slot.appointments.length ? t('Réservé') : slot.isActive ? t('Disponible') : t('Désactivé')}</small>
+          </span>
+          <button className={`button small ${slot.isActive ? 'appointment-reject' : ''}`} disabled={updateSlot.isPending || (slot.startsAt <= new Date().toISOString() && !slot.isActive)} onClick={() => updateSlot.mutate({ id: slot.id, isActive: !slot.isActive })}>
+            {t(slot.isActive ? 'Désactiver' : 'Activer')}
+          </button>
+        </div>)}
+      </div>}
+    </section>
+    <h2>{t('Rendez-vous réservés')}</h2>
+    {isLoading ? <p>{t('Chargement...')}</p> : appointments.length === 0 ? <div className="empty-state"><CalendarDays size={28} /><span>{t('Aucun rendez-vous enregistré.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{appointments.map((appointment: { id: string; startsAt: string; office: string; status: string; user?: { nom?: string | null; email: string } }) => <div className="recent-row" key={appointment.id}><CalendarDays size={18} /><span><strong>{new Date(appointment.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR')}</strong><small>{appointment.user?.nom ?? appointment.user?.email} · {t(appointment.office)} · {t(appointment.status)}</small></span>{appointment.status === 'PENDING' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small primary" onClick={() => void update(appointment.id, 'BOOKED')}>{t('Confirmer')}</button><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button></span>}{appointment.status === 'BOOKED' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button><button className="button small appointment-complete" onClick={() => void update(appointment.id, 'COMPLETED')}>{t('Terminer')}</button></span>}</div>)}</div>}
+  </section>;
 }

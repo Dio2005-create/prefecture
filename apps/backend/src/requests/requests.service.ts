@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { existsSync } from 'node:fs';
 import { readFileSync } from 'node:fs';
 import { createReadStream } from 'node:fs';
+import { unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RequestType } from '@prisma/client';
 import { PaymentProvider } from '@prisma/client';
@@ -36,6 +37,7 @@ const defaultFees: Record<RequestType, number> = {
   ADMINISTRATIVE_AUTHORIZATION: 10000,
 };
 const SIMULATED_PAYMENT_PIN = '1234';
+const citizenEditableStatuses = ['DRAFT', 'SUBMITTED', 'PENDING_CHIEF', 'IN_REVIEW', 'PENDING_PREFECT', 'PENDING_PAYMENT', 'IN_PROGRESS', 'NEEDS_INFO'] as const;
 
 @Injectable()
 export class RequestsService {
@@ -72,7 +74,7 @@ export class RequestsService {
     return this.prisma.serviceRequest.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      include: { service: true, history: { orderBy: { createdAt: 'asc' } } },
+      include: { service: true, attachments: true, history: { orderBy: { createdAt: 'asc' } } },
     });
   }
 
@@ -221,6 +223,49 @@ export class RequestsService {
     }
   }
 
+  private ensureCitizenCanEdit(status: string) {
+    if (['APPROVED', 'REJECTED', 'ARCHIVED', 'CANCELLED'].includes(status)) {
+      throw new ForbiddenException('Cette demande ne peut plus être modifiée après la décision de l’administration');
+    }
+  }
+
+  async updateByCitizen(requestId: string, userId: string, data: { formData?: Record<string, unknown>; description?: string; title?: string }) {
+    const request = await this.prisma.serviceRequest.findUnique({ where: { id: requestId } });
+    if (!request) throw new NotFoundException('Demande introuvable');
+    if (request.userId !== userId) throw new ForbiddenException('Vous ne pouvez pas modifier cette demande');
+    this.ensureCitizenCanEdit(request.status);
+
+    const formData = data.formData ?? (request.formData && typeof request.formData === 'object' && !Array.isArray(request.formData)
+      ? request.formData as Record<string, unknown>
+      : {});
+    this.validateFormData(request.type, formData);
+
+    const updated = await this.prisma.$transaction(async (transaction) => {
+      const editable = await transaction.serviceRequest.updateMany({
+        where: { id: requestId, userId, status: { in: [...citizenEditableStatuses] } },
+        data: { updatedAt: new Date() },
+      });
+      if (editable.count === 0) throw new ForbiddenException('Cette demande ne peut plus être modifiée après la décision de l’administration');
+      await transaction.serviceRequest.update({
+        where: { id: requestId },
+        data: {
+          ...(data.title !== undefined ? { title: data.title.trim() || request.title } : {}),
+          ...(data.description !== undefined ? { description: data.description } : {}),
+          formData: formData as Prisma.InputJsonValue,
+          updatedAt: new Date(),
+        },
+      });
+      await transaction.requestStatusHistory.create({
+        data: { requestId, status: request.status, comment: 'Informations du dossier mises à jour par le citoyen', changedById: userId },
+      });
+      return transaction.serviceRequest.findUniqueOrThrow({
+        where: { id: requestId },
+        include: { service: true, attachments: true, history: { orderBy: { createdAt: 'asc' } } },
+      });
+    });
+    return updated;
+  }
+
   async findById(id: string, user?: { id: string; roles?: string[]; role?: string }) {
     const request = await this.prisma.serviceRequest.findUnique({
       where: { id },
@@ -246,23 +291,73 @@ export class RequestsService {
     requestId: string,
     user: { id: string; roles?: string[]; role?: string },
     file: { path: string; originalname: string; mimetype?: string; size?: number },
+    label?: string,
   ) {
     const request = await this.prisma.serviceRequest.findUnique({ where: { id: requestId } });
     if (!request) throw new NotFoundException('Demande introuvable');
 
     const isBackOffice = user.role === 'ADMIN' || user.roles?.includes('ADMIN');
     if (!isBackOffice && request.userId !== user.id) throw new ForbiddenException('Vous ne pouvez pas modifier cette demande');
+    if (!isBackOffice) this.ensureCitizenCanEdit(request.status);
+    if (!label || !getRequestRequirements(request.type).attachments.some((requirement) => requirement.label === label)) {
+      throw new BadRequestException('Sélectionnez un type de pièce justificative valide');
+    }
+    if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype ?? '') || (file.size ?? 0) > 10 * 1024 * 1024) {
+      throw new BadRequestException('La pièce doit être un PDF, JPG ou PNG de 10 Mo maximum');
+    }
 
-    return this.prisma.requestAttachment.create({
-      data: {
-        requestId,
-        label: 'Pièce complémentaire',
-        originalName: file.originalname,
-        storagePath: file.path,
-        mimeType: file.mimetype,
-        size: file.size,
-      },
+    return this.prisma.$transaction(async (transaction) => {
+      if (!isBackOffice) {
+        const editable = await transaction.serviceRequest.updateMany({
+          where: { id: requestId, userId: user.id, status: { in: [...citizenEditableStatuses] } },
+          data: { updatedAt: new Date() },
+        });
+        if (editable.count === 0) throw new ForbiddenException('Cette demande ne peut plus être modifiée après la décision de l’administration');
+      }
+      const created = await transaction.requestAttachment.create({
+        data: { requestId, label, originalName: file.originalname, storagePath: file.path, mimeType: file.mimetype, size: file.size },
+      });
+      await transaction.requestStatusHistory.create({
+        data: { requestId, status: request.status, comment: 'Pièce justificative ajoutée au dossier', changedById: user.id },
+      });
+      return created;
     });
+  }
+
+  async replaceAttachment(
+    requestId: string,
+    attachmentId: string,
+    user: { id: string; roles?: string[]; role?: string },
+    file: { path: string; originalname: string; mimetype?: string; size?: number },
+  ) {
+    const attachment = await this.prisma.requestAttachment.findUnique({ where: { id: attachmentId }, include: { request: true } });
+    if (!attachment || attachment.requestId !== requestId) throw new NotFoundException('Pièce jointe introuvable');
+    const isBackOffice = user.role === 'ADMIN' || user.roles?.includes('ADMIN');
+    if (!isBackOffice && attachment.request.userId !== user.id) throw new ForbiddenException('Vous ne pouvez pas modifier cette demande');
+    if (!isBackOffice) this.ensureCitizenCanEdit(attachment.request.status);
+    if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype ?? '') || (file.size ?? 0) > 10 * 1024 * 1024) {
+      throw new BadRequestException('La pièce doit être un PDF, JPG ou PNG de 10 Mo maximum');
+    }
+
+    const updated = await this.prisma.$transaction(async (transaction) => {
+      if (!isBackOffice) {
+        const editable = await transaction.serviceRequest.updateMany({
+          where: { id: requestId, userId: user.id, status: { in: [...citizenEditableStatuses] } },
+          data: { updatedAt: new Date() },
+        });
+        if (editable.count === 0) throw new ForbiddenException('Cette demande ne peut plus être modifiée après la décision de l’administration');
+      }
+      const replaced = await transaction.requestAttachment.update({
+        where: { id: attachmentId },
+        data: { originalName: file.originalname, storagePath: file.path, mimeType: file.mimetype, size: file.size },
+      });
+      await transaction.requestStatusHistory.create({
+        data: { requestId, status: attachment.request.status, comment: 'Pièce justificative remplacée dans le dossier', changedById: user.id },
+      });
+      return replaced;
+    });
+    if (existsSync(attachment.storagePath)) await unlink(attachment.storagePath);
+    return updated;
   }
 
   async getAttachment(requestId: string, attachmentId: string, user: { id: string; roles?: string[]; role?: string }) {

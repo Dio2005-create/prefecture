@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, Eye } from 'lucide-react';
+import { RefreshCw, Eye, Download, Pencil, Save, X } from 'lucide-react';
 import { prefectureService } from '../services/api';
 import { Pagination } from '../components/ui';
 import type { RequestAttachmentRequirement, RequestType, RequestRequirements } from '../types';
@@ -29,7 +29,7 @@ const requestLabels: Record<RequestType, string> = {
   NATIONALITY_CERTIFICATE: 'Certificat de nationalité',
   CIN_REQUEST: 'Demande de CIN',
   CIN_RENEWAL: 'Renouvellement de CIN',
-  GOOD_CHARACTER_CERTIFICATE: 'Certificat de bonne vie et moeurs',
+  GOOD_CHARACTER_CERTIFICATE: 'Certificat de bonne vie et mœurs',
   BUILDING_PERMIT: 'Permis de construire',
   LAND_STATUS: 'Situation foncière',
   COMMERCIAL_LICENSE: 'Licence commerciale',
@@ -106,6 +106,26 @@ export function RequestPage() {
     queryKey: ['citizen-requests'],
     queryFn: prefectureService.listRequests,
     refetchInterval: 3000,
+  });
+  const [editingRequest, setEditingRequest] = useState<(typeof requests)[number] | null>(null);
+  const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editFormData, setEditFormData] = useState<Record<string, string>>({});
+  const [editAttachmentLabel, setEditAttachmentLabel] = useState('');
+  const [editAttachmentId, setEditAttachmentId] = useState('');
+  const [editAttachmentFile, setEditAttachmentFile] = useState<File | null>(null);
+  const [editError, setEditError] = useState('');
+  const { data: editRequirements, isLoading: loadingEditRequirements } = useQuery<RequestRequirements>({
+    queryKey: ['request-requirements', editingRequest?.type],
+    queryFn: () => prefectureService.requirements(editingRequest!.type as RequestType),
+    enabled: Boolean(editingRequest),
+  });
+  const expandedRequest = requests.find((request) => request.id === expandedRequestId);
+  const { data: displayRequirements } = useQuery<RequestRequirements>({
+    queryKey: ['request-requirements', expandedRequest?.type],
+    queryFn: () => prefectureService.requirements(expandedRequest!.type as RequestType),
+    enabled: Boolean(expandedRequest),
   });
 
   const [selectedServiceId, setSelectedServiceId] = useState('');
@@ -190,6 +210,31 @@ export function RequestPage() {
     },
     onError: (error) => setSubmitError(getRequestErrorMessage(error)),
   });
+  const editMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingRequest) throw new Error('Aucune demande sélectionnée.');
+      const saved = await prefectureService.updateCitizenRequest(editingRequest.id, {
+        title: editTitle,
+        description: editDescription,
+        formData: editFormData,
+      });
+      if (editAttachmentFile && editAttachmentId) {
+        await prefectureService.replaceCitizenAttachment(editingRequest.id, editAttachmentId, editAttachmentFile);
+      } else if (editAttachmentFile && editAttachmentLabel) {
+        await prefectureService.addCitizenAttachment(editingRequest.id, editAttachmentFile, editAttachmentLabel);
+      }
+      return saved;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['citizen-requests'] });
+      setEditingRequest(null);
+      setEditAttachmentFile(null);
+      setEditAttachmentLabel('');
+      setEditAttachmentId('');
+      setEditError('');
+    },
+    onError: (error) => setEditError(getRequestErrorMessage(error)),
+  });
 
   const confirmSimulatedPayment = () => {
     if (!requestFormIsValid) {
@@ -228,6 +273,34 @@ export function RequestPage() {
     setFormData({});
     setSelectedFiles([]);
   };
+
+  const beginEditingRequest = (request: (typeof requests)[number]) => {
+    const values = request.formData && typeof request.formData === 'object' ? request.formData : {};
+    setEditingRequest(request);
+    setEditTitle(request.title ?? '');
+    setEditDescription(request.description ?? '');
+    setEditFormData(Object.fromEntries(Object.entries(values).map(([key, value]) => [key, renderValue(value) === '—' ? '' : renderValue(value)])));
+    setEditAttachmentFile(null);
+    setEditAttachmentLabel('');
+    setEditAttachmentId('');
+    setEditError('');
+  };
+
+  const downloadRequestAttachment = async (requestId: string, attachmentId: string, fileName: string) => {
+    try {
+      const blob = await prefectureService.downloadAttachment(requestId, attachmentId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setRequestError(getRequestErrorMessage(error));
+    }
+  };
+
+  const citizenCanEdit = (status: string) => !['APPROVED', 'REJECTED', 'ARCHIVED', 'CANCELLED'].includes(status);
 
   const handleFiles = (requirement: AttachmentRequirement, files: FileList | null) => {
     const nextFiles = Array.from(files ?? []).map((file) => ({ requirement: requirement.label, file }));
@@ -390,6 +463,62 @@ export function RequestPage() {
           </div>
         </section></div>}
 
+      {editingRequest && <div className="modal-backdrop" role="presentation">
+        <section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="edit-request-title" style={{ width: 'min(760px, 100%)', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 12 }}>
+            <div><p className="eyebrow">{t('Correction du dossier')}</p><h2 id="edit-request-title">{t('Vérifier et modifier ma demande')}</h2><p>{t('Vous pouvez corriger les informations et ajouter une pièce tant que la demande n’a pas été traitée.')}</p></div>
+            <button className="button muted small" type="button" aria-label={t('Fermer')} onClick={() => setEditingRequest(null)}><X size={16} /></button>
+          </div>
+          {loadingEditRequirements ? <p>{t('Chargement...')}</p> : (
+            <div className="request-form">
+              <label className="request-field">{t('Objet')}<input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} /></label>
+              <section className="request-form-section"><h3>{t('Informations demandées')}</h3><div className="request-form-grid">
+                {(editRequirements?.fields ?? []).map((field) => (
+                  <label className={`request-field ${field.type === 'textarea' ? 'full-width' : ''}`} key={field.name}>
+                    {t(field.label)}{field.required ? ' *' : ''}
+                    {field.type === 'textarea' ? <textarea rows={3} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} /> : <input type={field.type} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} />}
+                  </label>
+                ))}
+              </div></section>
+              <label className="request-field">{t('Description complémentaire')}<textarea rows={3} value={editDescription} onChange={(event) => setEditDescription(event.target.value)} /></label>
+              <section className="request-form-section"><h3>{t('Pièces justificatives')}</h3>
+                {editingRequest.attachments?.length ? <div style={{ display: 'grid', gap: 8 }}>
+                  {editingRequest.attachments.map((attachment) => <div key={attachment.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                    <span>{t(attachment.label ?? 'Pièce complémentaire')} — {attachment.originalName}</span>
+                    <button className="button muted small" type="button" onClick={() => void downloadRequestAttachment(editingRequest.id, attachment.id, attachment.originalName)}><Download size={14} />{t('Télécharger')}</button>
+                  </div>)}
+                </div> : <p>{t('Aucune pièce jointe pour le moment.')}</p>}
+                <div className="request-form-grid">
+                  <label className="request-field">{t('Pièce à modifier')}<select value={editAttachmentId} onChange={(event) => {
+                    const nextId = event.target.value;
+                    setEditAttachmentId(nextId);
+                    setEditAttachmentLabel('');
+                    setEditAttachmentFile(null);
+                  }}>
+                    <option value="">{t('Ajouter une nouvelle pièce')}</option>
+                    {(editingRequest.attachments ?? []).map((item) => <option key={item.id} value={item.id}>{t(item.label ?? 'Pièce complémentaire')} — {item.originalName}</option>)}
+                  </select></label>
+                  {editAttachmentId ? <label className="request-field">{t('Nouveau fichier')}<input type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" onChange={(event) => setEditAttachmentFile(event.target.files?.[0] ?? null)} /></label> : <>
+                    <label className="request-field">{t('Type de pièce')}<select value={editAttachmentLabel} onChange={(event) => setEditAttachmentLabel(event.target.value)}>
+                      <option value="">{t('Choisir une pièce')}</option>
+                      {(editRequirements?.attachments ?? []).map((item) => <option key={item.key} value={item.label}>{t(item.label)}</option>)}
+                    </select></label>
+                    <label className="request-field">{t('Ajouter une pièce')}<input type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" onChange={(event) => setEditAttachmentFile(event.target.files?.[0] ?? null)} /></label>
+                  </>}
+                </div>
+                {editAttachmentFile && <small>{editAttachmentFile.name} ({Math.ceil(editAttachmentFile.size / 1024)} Ko)</small>}
+                <small className="form-hint">{t('Un remplacement conserve le type de pièce et met à jour le fichier joint au dossier.')}</small>
+              </section>
+              {editError && <p className="error-message" role="alert">{t(editError)}</p>}
+              <div className="modal-actions">
+                <button className="button" type="button" disabled={editMutation.isPending} onClick={() => setEditingRequest(null)}>{t('Annuler')}</button>
+                <button className="button primary" type="button" disabled={editMutation.isPending || loadingEditRequirements || Boolean(editAttachmentFile && !editAttachmentId && !editAttachmentLabel)} onClick={() => editMutation.mutate()}><Save size={15} />{t(editMutation.isPending ? 'Enregistrement...' : 'Enregistrer les modifications')}</button>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>}
+
       <div className="panel" style={{ padding: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <h3>{t('Mes demandes')}</h3>
@@ -407,14 +536,22 @@ export function RequestPage() {
                   </span>
                 </div>
                 <small style={{ display: 'block', marginTop: 6 }}>{language === 'mg' ? request.service?.nameMg ?? t(request.type) : request.service?.nameFr ?? t(request.type)}</small>
-                {request.formData && Object.keys(request.formData).length > 0 && (
-                  <small style={{ display: 'block', marginTop: 8, color: '#54657a' }}>
-                    {Object.entries(request.formData).slice(0, 3).map(([key, value]) => `${t(dynamicRequirements?.fields.find((field) => field.name === key)?.label ?? key)}: ${renderValue(value)}`).join(' • ')}
-                  </small>
-                )}
                 {request.history && request.history.length > 0 && <small style={{ display: 'block', marginTop: 8, color: '#54657a' }}>
                   {t('Dernière mise à jour')} : {t(request.history[request.history.length - 1].comment ?? formatStatus(request.history[request.history.length - 1].status))}
                 </small>}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                  <button className="button muted small" type="button" onClick={() => setExpandedRequestId(expandedRequestId === request.id ? null : request.id)}><Eye size={14} />{t(expandedRequestId === request.id ? 'Masquer le dossier' : 'Vérifier le dossier')}</button>
+                  {citizenCanEdit(request.status) && <button className="button small" type="button" onClick={() => beginEditingRequest(request)}><Pencil size={14} />{t('Modifier')}</button>}
+                </div>
+                {expandedRequestId === request.id && <div className="request-form-section" style={{ marginTop: 12 }}>
+                  <h3>{t('Informations déclarées')}</h3>
+                  {request.formData && Object.keys(request.formData).length > 0 ? <div style={{ display: 'grid', gap: 6 }}>
+                    {Object.entries(request.formData).map(([key, value]) => <small key={key}><strong>{t(displayRequirements?.fields.find((field) => field.name === key)?.label ?? key)} :</strong> {renderValue(value)}</small>)}
+                  </div> : <small>{t('Aucune information de formulaire.')}</small>}
+                  {request.description && <p><strong>{t('Description complémentaire')} :</strong> {request.description}</p>}
+                  <h3>{t('Pièces justificatives')}</h3>
+                  {request.attachments?.length ? request.attachments.map((attachment) => <button key={attachment.id} className="button muted small" type="button" onClick={() => void downloadRequestAttachment(request.id, attachment.id, attachment.originalName)}><Download size={14} />{t(attachment.label ?? 'Pièce complémentaire')} — {attachment.originalName}</button>) : <small>{t('Aucune pièce jointe pour le moment.')}</small>}
+                </div>}
               </div>
             ))}
             <Pagination page={requestPage} totalPages={Math.max(1, Math.ceil(requests.length / 5))} onChange={setRequestPage} />
