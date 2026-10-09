@@ -134,6 +134,7 @@ const malagasy: Record<string, string> = {
   'Nouveau mot de passe': 'Tenimiafina vaovao',
   'Confirmer le nouveau mot de passe': 'Hamafiso ny tenimiafina vaovao',
   'Identifiant ou mot de passe incorrect.': 'Diso ny solon’anarana na tenimiafina.',
+  'Votre compte est désactivé. Veuillez contacter l’administration.': 'Voasakana ny kaontinao. Mifandraisa amin’ny mpitantana.',
   'Créer mon compte': 'Mamorona ny kaontiko',
   'Se connecter': 'Hiditra',
   'J’ai déjà un compte': 'Efa manana kaonty aho',

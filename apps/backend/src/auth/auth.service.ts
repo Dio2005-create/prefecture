@@ -111,6 +111,9 @@ export class AuthService {
 
     if (!user || !user.passwordHash) throw new UnauthorizedException('Identifiants invalides');
     if (!(await this.verifyPassword(cleanPassword, user.passwordHash))) throw new UnauthorizedException('Identifiants invalides');
+    if (user.status === 'INACTIVE') {
+      throw new UnauthorizedException('Votre compte est désactivé. Veuillez contacter l’administration.');
+    }
     if (user.status !== 'ACTIVE') throw new UnauthorizedException('Compte indisponible');
 
     const token = randomBytes(32).toString('hex');

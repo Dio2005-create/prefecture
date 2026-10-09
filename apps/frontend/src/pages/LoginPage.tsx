@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
+import axios from 'axios';
 import { useAuth } from '../auth';
 import { usePreferences } from '../preferences';
 
@@ -13,22 +14,32 @@ export function LoginPage() {
   const [phone, setPhone] = useState('');
   const [cin, setCin] = useState('');
   const [isAdult, setIsAdult] = useState<boolean | null>(null);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState('');
   const { login, register } = useAuth();
   const { t } = usePreferences();
   const navigate = useNavigate();
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const user = isRegistering
-      ? await register({ email: identifier, password, nom, phone: phone || undefined, cin: isAdult ? cin : undefined, isAdult: isAdult === true })
-      : await login(identifier, password);
-    if (user) {
-      const defaultPath = user.roles.includes('CITIZEN') ? '/front/accueil' : '/back/accueil';
-      navigate(defaultPath, { replace: true });
-      return;
+    setError('');
+    try {
+      const user = isRegistering
+        ? await register({ email: identifier, password, nom, phone: phone || undefined, cin: isAdult ? cin : undefined, isAdult: isAdult === true })
+        : await login(identifier, password);
+      if (user) {
+        const defaultPath = user.roles.includes('CITIZEN') ? '/front/accueil' : '/back/accueil';
+        navigate(defaultPath, { replace: true });
+        return;
+      }
+      setError(t('Identifiant ou mot de passe incorrect.'));
+    } catch (requestError) {
+      const responseMessage = axios.isAxiosError(requestError)
+        ? (requestError.response?.data as { message?: string } | undefined)?.message
+        : undefined;
+      setError(!isRegistering && responseMessage === 'Votre compte est désactivé. Veuillez contacter l’administration.'
+        ? t(responseMessage)
+        : t('Identifiant ou mot de passe incorrect.'));
     }
-    setError(true);
   };
 
   return (
@@ -129,10 +140,10 @@ export function LoginPage() {
               </span>
             </label>
 
-            {error && <p className="error-message">{t('Identifiant ou mot de passe incorrect.')}</p>}
+            {error && <p className="error-message" role="alert">{error}</p>}
             <button className="button primary full" type="submit">{t(isRegistering ? 'Créer mon compte' : 'Se connecter')}</button>
           </form>
-          <button className="text-link auth-switch" type="button" onClick={() => { setIsRegistering((value) => !value); setIsAdult(null); setCin(''); setError(false); }}>
+          <button className="text-link auth-switch" type="button" onClick={() => { setIsRegistering((value) => !value); setIsAdult(null); setCin(''); setError(''); }}>
             {t(isRegistering ? 'J’ai déjà un compte' : 'Créer un compte citoyen')}
           </button>
         </div>

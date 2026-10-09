@@ -91,7 +91,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(authenticatedUser);
       setAuthenticated(true);
       return authenticatedUser;
-    } catch { return null; }
+    } catch (error) {
+      throw error;
+    }
   };
   const register = async (payload: { email: string; password: string; phone?: string; cin?: string; nom?: string; isAdult: boolean }) => {
     try {
