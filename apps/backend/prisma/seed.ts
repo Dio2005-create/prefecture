@@ -104,10 +104,11 @@ async function seedRoles() {
   const roles: Array<{ name: RoleName; description: string }> = [
     { name: 'CITIZEN', description: 'Citoyen - Accès Front-Office' },
     { name: 'ADMIN', description: 'Administrateur système' },
+    { name: 'SUPERADMIN', description: 'Super-administrateur système' },
   ];
 
-  await prisma.userRole.deleteMany({ where: { role: { name: { notIn: [RoleName.CITIZEN, RoleName.ADMIN] } } } });
-  await prisma.role.deleteMany({ where: { name: { notIn: [RoleName.CITIZEN, RoleName.ADMIN] } } });
+  await prisma.userRole.deleteMany({ where: { role: { name: { notIn: [RoleName.CITIZEN, RoleName.ADMIN, RoleName.SUPERADMIN] } } } });
+  await prisma.role.deleteMany({ where: { name: { notIn: [RoleName.CITIZEN, RoleName.ADMIN, RoleName.SUPERADMIN] } } });
 
   for (const role of roles) {
     await prisma.role.upsert({

@@ -59,7 +59,7 @@ export class MailerService {
         `Failed to send account deactivation email to ${email}`,
         error instanceof Error ? error.stack : String(error),
       );
-      throw new ServiceUnavailableException('Compte désactivé, mais l’e-mail de notification n’a pas pu être envoyé. Vérifiez la configuration SMTP et réessayez.');
+      throw new ServiceUnavailableException('La désactivation a été annulée, car l’e-mail de notification n’a pas pu être envoyé. Vérifiez la configuration SMTP et réessayez.');
     }
   }
 }

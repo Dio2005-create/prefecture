@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { randomBytes, scrypt as deriveKey } from 'node:crypto';
 import { promisify } from 'node:util';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,6 +7,8 @@ import { MailerService } from './mailer.service';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auth: AuthService,
@@ -54,6 +56,7 @@ export class UsersService {
         status: true,
         locale: true,
         createdAt: true,
+        roles: { select: { role: { select: { name: true } } } },
       },
     });
   }
@@ -99,8 +102,21 @@ export class UsersService {
       select: { id: true, email: true, nom: true, role: true, status: true },
     });
     if (status === 'INACTIVE') {
+      try {
+        await this.mailer.sendCitizenDeactivation(user.email, user.locale);
+      } catch (error) {
+        try {
+          await this.prisma.user.update({ where: { id: userId }, data: { status: user.status } });
+        } catch (rollbackError) {
+          this.logger.error(
+            `Failed to restore account status after deactivation email failure for ${userId}`,
+            rollbackError instanceof Error ? rollbackError.stack : String(rollbackError),
+          );
+          throw new ServiceUnavailableException('L’e-mail n’a pas pu être envoyé et le statut du compte n’a pas pu être restauré. Vérifiez le compte avant de réessayer.');
+        }
+        throw error;
+      }
       this.auth.revokeUserSessions(userId);
-      await this.mailer.sendCitizenDeactivation(user.email, user.locale);
     }
     return updatedUser;
   }

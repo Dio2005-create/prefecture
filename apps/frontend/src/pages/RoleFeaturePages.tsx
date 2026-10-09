@@ -132,9 +132,11 @@ export function UsersPage() {
   const { t } = usePreferences();
   const { data: users = [], isLoading } = useQuery({ queryKey: ['users'], queryFn: userService.list });
   const citizens = users.filter((user) => user.role === 'CITIZEN');
-  const admins = users.filter((user) => user.role === 'ADMIN');
-  const group = (title: string, entries: typeof users) => <section><h2>{t(title)}</h2><div style={{ display: 'grid', gap: 10 }}>{entries.length === 0 ? <p className="muted">{t('Aucun utilisateur.')}</p> : entries.map((user) => <div className="recent-row" key={user.id}><Users size={18} /><span><strong>{user.nom ?? user.email}</strong><small>{user.email} · {t(user.status)}</small></span></div>)}</div></section>;
-  return <section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Administration')}</p><h1>{t('Utilisateurs')}</h1><p>{t('Les citoyens et les administrateurs sont gérés dans deux espaces distincts.')}</p>{isLoading ? <Loading /> : <div style={{ display: 'grid', gap: 28 }}>{group('Administrateurs', admins)}{group('Citoyens', citizens)}</div>}<div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}><ShieldCheck size={18} /><strong>{t('Accès séparés par rôle')}</strong></div></section>;
+  const isSuperAdmin = (user: typeof users[number]) => user.roles?.some(({ role }) => role.name === 'SUPERADMIN') ?? false;
+  const superAdmins = users.filter(isSuperAdmin);
+  const admins = users.filter((user) => user.role === 'ADMIN' && !isSuperAdmin(user));
+  const group = (title: string, entries: typeof users) => <section className="user-role-group"><h2>{t(title)}</h2><div style={{ display: 'grid', gap: 10 }}>{entries.length === 0 ? <p className="muted">{t('Aucun utilisateur.')}</p> : entries.map((user) => <div className="recent-row" key={user.id}><Users size={18} /><span><strong>{user.nom ?? user.email}</strong><small>{user.email} · {t(user.status)}</small></span></div>)}</div></section>;
+  return <section className="panel users-page" style={{ padding: 24 }}><p className="eyebrow">{t('Administration')}</p><h1>{t('Utilisateurs')}</h1><p>{t('Les citoyens et les administrateurs sont gérés dans des espaces distincts.')}</p>{isLoading ? <Loading /> : <div className="user-role-groups">{group('Super-administrateurs', superAdmins)}{group('Administrateurs', admins)}{group('Citoyens', citizens)}</div>}<div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}><ShieldCheck size={18} /><strong>{t('Accès séparés par rôle')}</strong></div></section>;
 }
 
 export function AdminSettingsPage() {

@@ -95,7 +95,7 @@ export const appointmentService = {
 };
 
 export const userService = {
-  list: async () => (await api.get<Array<{ id: string; email: string; nom: string | null; role: string; status: string; createdAt: string }>>('/users')).data,
+  list: async () => (await api.get<Array<{ id: string; email: string; nom: string | null; role: string; status: string; createdAt: string; roles?: Array<{ role: { name: string } }> }>>('/users')).data,
   updateCitizenStatus: async (id: string, status: 'ACTIVE' | 'INACTIVE') =>
     (await api.patch<{ id: string; email: string; nom: string | null; role: string; status: string }>(`/users/${id}/status`, { status })).data,
 };
