@@ -53,6 +53,12 @@ services:
       OLLAMA_URL: http://host.docker.internal:11434
       QDRANT_URL: http://qdrant:6333
       REQUEST_MODELS_DIR: /app/modeles_pdf
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      SMTP_USER: ${SMTP_USER:-joashclaudio@gmail.com}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-joashclaudio@gmail.com}
     ports:
       - "3000:3000"
     volumes:

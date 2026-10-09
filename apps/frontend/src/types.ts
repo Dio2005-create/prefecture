@@ -61,6 +61,7 @@ export interface CitizenRequest {
     cin?: string;
   };
   history?: Array<{ status: string; comment?: string; createdAt: string }>;
+  appointments?: Array<{ id: string; startsAt: string; endsAt: string; office: string; status: string }>;
   attachments?: Array<{ id: string; label?: string; originalName: string; mimeType?: string; size?: number; createdAt: string }>;
 }
 

@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AppointmentsController } from './appointments.controller';
 import { AppointmentsService } from './appointments.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
-@Module({ imports: [PrismaModule, AuthModule], controllers: [AppointmentsController], providers: [AppointmentsService] })
+@Module({ imports: [PrismaModule, AuthModule, NotificationsModule], controllers: [AppointmentsController], providers: [AppointmentsService] })
 export class AppointmentsModule {}

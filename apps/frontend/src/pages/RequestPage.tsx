@@ -167,6 +167,9 @@ export function RequestPage() {
     if (field.name === 'datePerte' && value && value > todayDate) {
       requestFormWarnings.push(`${t(field.label)} : ${t('La date de perte ne peut pas être dans le futur.')}`);
     }
+    if (field.name === 'tailleCm' && value && (!/^\d+$/.test(value) || Number(value) < 100 || Number(value) > 250)) {
+      requestFormWarnings.push(`${t(field.label)} : ${t('Saisissez la taille en centimètres, entre 100 et 250 (par exemple 174 pour 1,74 m).')}`);
+    }
   });
   if ((requestType === 'CIN_REQUEST' || requestType === 'CIN_RENEWAL') && formData.dateNaissance) {
     const birthDate = new Date(`${formData.dateNaissance}T00:00:00.000Z`);
@@ -397,7 +400,9 @@ export function RequestPage() {
                 ) : (
                   <input
                     type={field.type}
-                    max={field.name === 'datePerte' ? todayDate : undefined}
+                    min={field.name === 'tailleCm' ? 100 : undefined}
+                    max={field.name === 'tailleCm' ? 250 : field.name === 'datePerte' ? todayDate : undefined}
+                    step={field.name === 'tailleCm' ? 1 : undefined}
                     required={field.required}
                     value={formData[field.name] ?? ''}
                     onChange={(e) => { setFormData((prev) => ({ ...prev, [field.name]: e.target.value })); setFieldErrors((prev) => ({ ...prev, [field.name]: '' })); }}
@@ -414,7 +419,7 @@ export function RequestPage() {
               const files = selectedFiles.filter((item) => item.requirement === requirement.label);
               return <div className="request-field full-width" key={requirement.key}>
                 <label>{t(requirement.label)}{requirement.required ? ' *' : ` (${t('facultatif')})`}
-                  <input type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" multiple={requirement.multiple} required={requirement.required && files.length < (requirement.minFiles ?? 1)} onChange={(event) => handleFiles(requirement, event.target.files)} />
+                  <input type="file" accept={requirement.label === 'Photo d’identité 4 x 4' ? 'image/jpeg,image/png,.jpg,.jpeg,.png' : 'application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png'} multiple={requirement.multiple} required={requirement.required && files.length < (requirement.minFiles ?? 1)} onChange={(event) => handleFiles(requirement, event.target.files)} />
                 </label>
                 {files.length > 0 && <div className="file-preview">{files.map((item) => <span key={`${requirement.key}-${item.file.name}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}><small>{item.file.name} ({Math.ceil(item.file.size / 1024)} Ko)</small><button type="button" className="button small" onClick={() => previewFile(item.file)}><Eye size={13} /> {t('Aperçu')}</button></span>)}</div>}
               </div>;

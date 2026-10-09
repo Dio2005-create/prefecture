@@ -80,12 +80,15 @@ export const notificationService = {
 };
 
 export const appointmentService = {
-  available: async () => (await api.get('/appointments/available')).data,
+  available: async (date?: string) => (await api.get('/appointments/available', { params: date ? { date } : undefined })).data,
   list: async () => (await api.get('/appointments')).data,
   book: async (payload: { slotId: string; requestId?: string; notes?: string }) => (await api.post('/appointments', payload)).data,
   cancel: async (id: string) => (await api.delete(`/appointments/${id}`)).data,
   listForAdmin: async () => (await api.get('/appointments/admin')).data,
   updateStatus: async (id: string, status: 'BOOKED' | 'CANCELLED' | 'COMPLETED') => (await api.patch(`/appointments/admin/${id}/status`, { status })).data,
+  listAvailabilityForAdmin: async () => (await api.get('/appointments/admin/availability')).data,
+  createAvailability: async (payload: { date: string; startTime: string; endTime: string; slotDurationMinutes: number; breakStart?: string; breakEnd?: string; office?: string }) =>
+    (await api.post('/appointments/admin/availability', payload)).data,
   listSlotsForAdmin: async () => (await api.get('/appointments/admin/slots')).data,
   createSlot: async (payload: { startsAt: string; endsAt: string; office?: string }) => (await api.post('/appointments/admin/slots', payload)).data,
   updateSlot: async (id: string, isActive: boolean) => (await api.patch(`/appointments/admin/slots/${id}`, { isActive })).data,
@@ -93,16 +96,24 @@ export const appointmentService = {
 
 export const userService = {
   list: async () => (await api.get<Array<{ id: string; email: string; nom: string | null; role: string; status: string; createdAt: string }>>('/users')).data,
+  updateCitizenStatus: async (id: string, status: 'ACTIVE' | 'INACTIVE') =>
+    (await api.patch<{ id: string; email: string; nom: string | null; role: string; status: string }>(`/users/${id}/status`, { status })).data,
 };
 
 export const adminService = {
   getStats: async () =>
-    (await api.get<{ total: number; pending: number; approved: number; rejected: number }>('/admin/stats')).data,
+    (await api.get<{
+      total: number; pending: number; approved: number; rejected: number;
+      totalUsers: number; citizens: number; administrators: number; activeUsers: number;
+      monthlySeries: Array<{ month: string; requests: number; users: number }>;
+    }>('/admin/stats')).data,
   listRequests: async (status?: string) =>
     (await api.get<CitizenRequest[]>('/admin/requests', { params: status ? { status } : undefined })).data,
   hideRequest: async (id: string) => (await api.delete(`/admin/requests/${id}/view`)).data,
   approveRequest: async (id: string, notes?: string) =>
     (await api.post<CitizenRequest>(`/admin/requests/${id}/approve`, { notes })).data,
+  assignCinAppointment: async (requestId: string, slotId: string) =>
+    (await api.post('/appointments/admin/requests/' + requestId + '/cin-appointment', { slotId })).data,
   rejectRequest: async (id: string, reason: string) =>
     (await api.post<CitizenRequest>(`/admin/requests/${id}/reject`, { reason })).data,
   requestMoreInfo: async (id: string, infoNeeded: string) =>

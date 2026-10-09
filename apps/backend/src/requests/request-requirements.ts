@@ -106,8 +106,27 @@ export function getRequestCompleteness(
   const missingFields = requirements.fields
     .filter((item) => item.required && (formData[item.name] === undefined || String(formData[item.name]).trim() === ''))
     .map((item) => item.label);
+  const invalidFields = requirements.fields.flatMap((item) => {
+    const value = formData[item.name];
+    if (value === undefined || String(value).trim() === '') return [];
+    if (item.type === 'date') {
+      const date = String(value);
+      const parsed = new Date(`${date}T00:00:00.000Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+        return [item.label];
+      }
+    }
+    if (item.type === 'number' && !Number.isFinite(Number(value))) return [item.label];
+    if (item.name.toLowerCase().includes('cin') && item.name !== 'cinNif' && !/^\d{12}$/.test(String(value).trim())) {
+      return [item.label];
+    }
+    if (item.name === 'tailleCm' && (!Number.isInteger(Number(value)) || Number(value) < 100 || Number(value) > 250)) {
+      return [item.label];
+    }
+    return [];
+  });
   const missingAttachments = requirements.attachments
     .filter((item) => item.required && attachments.filter((attachment) => attachment.label === item.label).length < (item.minFiles ?? 1))
     .map((item) => item.label);
-  return { missingFields, missingAttachments };
+  return { missingFields, invalidFields, missingAttachments };
 }

@@ -2,10 +2,16 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { randomBytes, scrypt as deriveKey } from 'node:crypto';
 import { promisify } from 'node:util';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuthService } from '../auth/auth.service';
+import { MailerService } from './mailer.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auth: AuthService,
+    private readonly mailer: MailerService,
+  ) {}
 
   private async hashPassword(password: string) {
     const salt = randomBytes(16).toString('hex');
@@ -70,5 +76,32 @@ export class UsersService {
       },
       select: { id: true, email: true, nom: true, phone: true, role: true, status: true, createdAt: true },
     });
+  }
+
+  async updateCitizenStatus(userId: string, status: 'ACTIVE' | 'INACTIVE') {
+    if (status !== 'ACTIVE' && status !== 'INACTIVE') {
+      throw new BadRequestException('Statut de compte invalide');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Utilisateur introuvable');
+    if (user.role !== 'CITIZEN') {
+      throw new BadRequestException('Seuls les comptes citoyens peuvent être désactivés depuis cette section');
+    }
+    if (user.status === status) {
+      throw new BadRequestException(status === 'INACTIVE' ? 'Ce compte est déjà désactivé' : 'Ce compte est déjà actif');
+    }
+    if (status === 'INACTIVE') this.mailer.assertConfigured();
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: { status },
+      select: { id: true, email: true, nom: true, role: true, status: true },
+    });
+    if (status === 'INACTIVE') {
+      this.auth.revokeUserSessions(userId);
+      await this.mailer.sendCitizenDeactivation(user.email, user.locale);
+    }
+    return updatedUser;
   }
 }

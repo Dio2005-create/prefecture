@@ -43,7 +43,7 @@ export function SearchPage() {
 				placeholder={t('Quels arrêtés concernent les autorisations de construction ?')}
 				aria-label={t('Votre recherche')}
 			/>
-			<button className="button primary" type="submit" disabled={!query.trim() || mutation.isPending}>
+			<button className="button primary search-submit" type="submit" disabled={!query.trim() || mutation.isPending}>
 				{t(mutation.isPending ? 'Recherche…' : 'Rechercher')}
 			</button>
 		</form>

@@ -133,6 +133,12 @@ export class AuthService {
     return { success: true };
   }
 
+  revokeUserSessions(userId: string) {
+    for (const [token, session] of this.sessions) {
+      if (session.userId === userId) this.sessions.delete(token);
+    }
+  }
+
   async validate(token?: string) {
     if (!token) throw new UnauthorizedException('Token manquant');
     const session = this.sessions.get(token);

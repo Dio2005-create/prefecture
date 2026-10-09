@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -21,8 +21,14 @@ export class UsersController {
   }
 
   @Post('admins')
-  @Roles('ADMIN')
+  @Roles('SUPERADMIN')
   createAdmin(@Body() body: { email?: string; password?: string; nom?: string; phone?: string }) {
     return this.usersService.createAdmin(body);
+  }
+
+  @Patch(':id/status')
+  @Roles('ADMIN')
+  updateCitizenStatus(@Param('id') id: string, @Body() body: { status?: 'ACTIVE' | 'INACTIVE' }) {
+    return this.usersService.updateCitizenStatus(id, body.status as 'ACTIVE' | 'INACTIVE');
   }
 }

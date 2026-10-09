@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AppointmentStatus } from '@prisma/client';
-import { IsBoolean, IsDateString, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
 import { AuthGuard } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -20,12 +20,33 @@ class BookAppointmentDto {
   notes?: string;
 }
 
-class CreateAppointmentSlotDto {
-  @IsDateString()
-  startsAt!: string;
+class AssignCinAppointmentDto {
+  @IsUUID()
+  slotId!: string;
+}
 
-  @IsDateString()
-  endsAt!: string;
+class CreateAppointmentAvailabilityDto {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  date!: string;
+
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  startTime!: string;
+
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  endTime!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(1440)
+  slotDurationMinutes!: number;
+
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  breakStart?: string;
+
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  breakEnd?: string;
 
   @IsOptional()
   @IsString()
@@ -49,7 +70,7 @@ export class AppointmentsController {
   constructor(private readonly appointments: AppointmentsService) {}
 
   @Get('available')
-  available() { return this.appointments.listAvailable(); }
+  available(@Query('date') date?: string) { return this.appointments.listAvailable(date); }
 
   @Get()
   list(@Req() req: { user?: { id: string } }) { return this.appointments.listByUser(req.user?.id ?? ''); }
@@ -64,10 +85,22 @@ export class AppointmentsController {
   @Roles('ADMIN')
   listSlotsForAdmin() { return this.appointments.listSlotsForAdmin(); }
 
-  @Post('admin/slots')
+  @Get('admin/availability')
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
-  createSlot(@Body() body: CreateAppointmentSlotDto) { return this.appointments.createSlot(body); }
+  listAvailabilityForAdmin() { return this.appointments.listAvailabilityForAdmin(); }
+
+  @Post('admin/availability')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  createAvailability(@Body() body: CreateAppointmentAvailabilityDto) { return this.appointments.createAvailability(body); }
+
+  @Post('admin/requests/:requestId/cin-appointment')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  assignCinAppointment(@Param('requestId', ParseUUIDPipe) requestId: string, @Body() body: AssignCinAppointmentDto, @Req() req: { user?: { id: string } }) {
+    return this.appointments.assignCinRequest(requestId, body.slotId, req.user?.id ?? '');
+  }
 
   @Patch('admin/slots/:id')
   @UseGuards(RolesGuard)

@@ -5,7 +5,6 @@ import { NotificationsService } from '../notifications/notifications.service';
 import PDFDocument = require('pdfkit');
 import { Prisma } from '@prisma/client';
 import { existsSync } from 'node:fs';
-import { readFileSync } from 'node:fs';
 import { createReadStream } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -14,7 +13,6 @@ import { PaymentProvider } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { getRequestCompleteness, getRequestRequirements } from './request-requirements';
 import { requestModels } from './request-models';
-import { PDFDocument as EditablePDFDocument } from 'pdf-lib';
 
 const defaultFees: Record<RequestType, number> = {
   BIRTH_CERTIFICATE: 5000,
@@ -204,10 +202,28 @@ export class RequestsService {
   }
 
   private validateFormData(type: RequestType, formData: Record<string, unknown>) {
-    const missing = getRequestRequirements(type).fields
+    const fields = getRequestRequirements(type).fields;
+    const missing = fields
       .filter((field) => formData[field.name] === undefined || String(formData[field.name]).trim() === '')
       .map((field) => field.label);
     if (missing.length > 0) throw new BadRequestException(`Champs obligatoires manquants : ${missing.join(', ')}`);
+    for (const field of fields) {
+      const value = formData[field.name];
+      if (value === undefined || String(value).trim() === '') continue;
+      if (field.type === 'date') {
+        const date = String(value);
+        const parsed = new Date(`${date}T00:00:00.000Z`);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+          throw new BadRequestException(`${field.label} : date invalide`);
+        }
+      }
+      if (field.type === 'number' && !Number.isFinite(Number(value))) {
+        throw new BadRequestException(`${field.label} : valeur numérique invalide`);
+      }
+      if (field.name.toLowerCase().includes('cin') && field.name !== 'cinNif' && !/^\d{12}$/.test(String(value).trim())) {
+        throw new BadRequestException(`${field.label} : la CIN doit contenir exactement 12 chiffres`);
+      }
+    }
     if (type === RequestType.LOSS_DECLARATION && typeof formData.datePerte === 'string') {
       const today = new Date();
       const localToday = new Date(today.getTime() - today.getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
@@ -216,9 +232,6 @@ export class RequestsService {
     if (type === RequestType.CIN_REQUEST || type === RequestType.CIN_RENEWAL) {
       const dateValue = String(formData.dateNaissance);
       const birthDate = new Date(`${dateValue}T00:00:00.000Z`);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue) || Number.isNaN(birthDate.getTime()) || birthDate.toISOString().slice(0, 10) !== dateValue) {
-        throw new BadRequestException('La date de naissance est invalide');
-      }
       const today = new Date();
       let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
       if (today.getUTCMonth() < birthDate.getUTCMonth() || (today.getUTCMonth() === birthDate.getUTCMonth() && today.getUTCDate() < birthDate.getUTCDate())) age -= 1;
@@ -394,8 +407,8 @@ export class RequestsService {
       ? request.formData as Record<string, unknown>
       : {};
     const completeness = getRequestCompleteness(request.type, formData, request.attachments);
-    if (completeness.missingFields.length || completeness.missingAttachments.length) {
-      throw new BadRequestException(`Le dossier est incomplet : ${[...completeness.missingFields, ...completeness.missingAttachments].join(', ')}`);
+    if (completeness.missingFields.length || completeness.invalidFields.length || completeness.missingAttachments.length) {
+      throw new BadRequestException(`Le dossier est incomplet ou contient des informations invalides : ${[...completeness.missingFields, ...completeness.invalidFields, ...completeness.missingAttachments].join(', ')}`);
     }
     const model = this.getModelPdf(request.type);
     const marks = await this.prisma.officialMark.findMany({ where: { isActive: true, kind: { in: ['STAMP', 'SIGNATURE'] } } });
@@ -404,20 +417,8 @@ export class RequestsService {
       const document = new PDFDocument({ size: 'A4', margin: 56 });
       const chunks: Buffer[] = [];
       document.on('data', (chunk: Buffer) => chunks.push(chunk));
-      document.on('end', async () => {
-        try {
-          const templatePdf = await EditablePDFDocument.load(readFileSync(model.path));
-          const detailsPdf = await EditablePDFDocument.load(Buffer.concat(chunks));
-          const completedPdf = await EditablePDFDocument.create();
-          const completedPages = await completedPdf.copyPages(detailsPdf, detailsPdf.getPageIndices());
-          completedPages.forEach((page) => completedPdf.addPage(page));
-          const templatePages = await completedPdf.copyPages(templatePdf, templatePdf.getPageIndices());
-          templatePages.forEach((page) => completedPdf.addPage(page));
-          resolve(Buffer.from(await completedPdf.save()));
-        } catch (error) {
-          reject(error);
-        }
-      });
+      document.on('end', () => resolve(Buffer.concat(chunks)));
+      document.on('error', reject);
       const labels: Record<string, string> = {
         BIRTH_CERTIFICATE: 'CERTIFICAT / EXTRAIT DE NAISSANCE',
         RESIDENCE_CERTIFICATE: 'CERTIFICAT DE RESIDENCE',
@@ -450,7 +451,8 @@ export class RequestsService {
       document.fontSize(18).text('PREFECTURE D’IHOSY', { align: 'center' });
       document.moveDown(0.5).fontSize(12).text('DOCUMENT ADMINISTRATIF OFFICIEL', { align: 'center' });
       document.moveDown(2).fontSize(11).text(`Service : ${request.service.nameFr}`);
-      document.text(`Modèle appliqué : ${requestModels[request.type].title}`);
+      document.text(`Démarche : ${requestModels[request.type].title}`);
+      document.text(`Modèle de référence : ${model.filename}`);
       document.text(`Référence : ${request.id}`);
       document.text(`Demandeur : ${request.user.nom ?? request.user.email}`);
       document.text(`Date de délivrance : ${new Date().toLocaleDateString('fr-FR')}`);

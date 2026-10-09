@@ -48,7 +48,8 @@ export class RagService {
   async repondre(question: string, topK: number, utilisateurId?: string, conversationId?: string) {
     const activeConversationId = await this.obtenirOuCreerConversation(utilisateurId, conversationId, question);
     const language = this.detecterLangue(question);
-    const requestType = findRequestModel(question);
+    const isGreeting = this.estSalutation(question);
+    const requestType = isGreeting ? null : findRequestModel(question);
     const localReply = requestType ? null : this.reponseLocaleQuestion(question, language);
     if (localReply) return this.enregistrerHistorique(question, localReply, [], utilisateurId, activeConversationId);
     let hits: Array<{ chunkId: string; documentId: string; contenu: string; score: number }> = await this.rechercher(question, topK);
@@ -141,7 +142,7 @@ export class RagService {
 
   private reponseLocaleQuestion(question: string, language: 'fr' | 'mg') {
     const normalized = this.normaliserTexte(question).trim();
-    if (/^(bonjour|salama|hello|bonsoir|bon matin)[!. ]*$/.test(normalized)) {
+    if (this.estSalutation(normalized)) {
       return language === 'mg' ? 'Salama! Afaka manampy anao amin’ny raharaha momba ny prefektiora aho.' : 'Bonjour ! Je peux vous aider pour vos démarches auprès de la préfecture.';
     }
     if (/suivre|suivi|etat|statut|demande|dossier|fangatahana/.test(normalized)) {
@@ -154,13 +155,18 @@ export class RagService {
     return null;
   }
 
+  private estSalutation(question: string) {
+    const normalized = this.normaliserTexte(question).trim();
+    return /^(?:bonjour|salama(?:\s+tompoko)?|manao ahoana(?:\s+tompoko)?|hello|bonsoir|bon matin)[!?,.\s]*$/.test(normalized);
+  }
+
   private normaliserTexte(texte: string) {
     return texte.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
   private detecterLangue(question: string): 'fr' | 'mg' {
     const normalized = this.normaliserTexte(question);
-    const malagasyMarkers = ['ahoana', 'manao', 'hanaovana', 'fomba', 'inona', 'aiza', 'oviana', 'ohatrinona', 'firy', 'mila', 'takiana', 'taratasy', 'antontan', 'fanambarana', 'fahazoan', 'fanavaozana', 'fitarainana', 'fikambanana', 'sonia', 'karapanondro', 'kara-panondro', 'very', 'handray', 'haka', 'afaka', 'azafady', 'ianao', 've', 'ny', 'aminny'];
+    const malagasyMarkers = ['salama', 'ahoana', 'manao', 'hanaovana', 'fomba', 'inona', 'aiza', 'oviana', 'ohatrinona', 'firy', 'mila', 'takiana', 'taratasy', 'antontan', 'fanambarana', 'fahazoan', 'fanavaozana', 'fitarainana', 'fikambanana', 'sonia', 'karapanondro', 'kara-panondro', 'very', 'handray', 'haka', 'afaka', 'azafady', 'ianao', 've', 'ny', 'aminny'];
     return malagasyMarkers.some((marker) => new RegExp(`\\b${marker}\\b`).test(normalized)) ? 'mg' : 'fr';
   }
 
@@ -280,7 +286,7 @@ export class RagService {
 
   private construireReponseLocale(question: string, hits: Array<{ contenu: string }>, language: 'fr' | 'mg') {
     const normalized = this.normaliserTexte(question);
-    if (/\bbonjour\b|\bsalama\b|\bhello\b/.test(normalized)) {
+    if (/\bbonjour\b|\bsalama\b|\bmanao ahoana\b|\bhello\b/.test(normalized)) {
       return language === 'mg' ? 'Salama! Afaka manampy anao amin’ny raharaha momba ny prefektiora aho.' : 'Bonjour ! Je peux vous aider pour vos démarches auprès de la préfecture.';
     }
     if (/rendez[- ]vous|appointment|fotoana/.test(normalized)) {

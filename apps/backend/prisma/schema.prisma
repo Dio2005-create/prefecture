@@ -30,6 +30,7 @@ enum RoleUtilisateur {
 enum RoleName {
   CITIZEN
   ADMIN
+  SUPERADMIN
 }
 
 model PlatformSetting {
@@ -309,16 +310,33 @@ model Appointment {
 
 model AppointmentSlot {
   id           String        @id @default(uuid())
+  availabilityId String?
   startsAt     DateTime
   endsAt       DateTime
   office       String        @default("Guichet général")
   isActive     Boolean       @default(true)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+  availability AppointmentAvailability? @relation(fields: [availabilityId], references: [id], onDelete: SetNull)
   appointments Appointment[]
 
   @@unique([startsAt, endsAt])
+  @@index([availabilityId, startsAt, isActive])
   @@index([startsAt, isActive])
+}
+
+model AppointmentAvailability {
+  id                    String            @id @default(uuid())
+  date                  DateTime          @unique @db.Date
+  startTime             String
+  endTime               String
+  slotDurationMinutes   Int
+  breakStart            String?
+  breakEnd              String?
+  office                String            @default("Guichet général")
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  slots                 AppointmentSlot[]
 }
 
 model Categorie {

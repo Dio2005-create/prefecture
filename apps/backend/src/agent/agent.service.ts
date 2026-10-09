@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, ForbiddenException, NotFoundException 
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, RequestStatus, RequestType } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
+import { getRequestCompleteness } from '../requests/request-requirements';
 
 @Injectable()
 export class AgentService {
@@ -79,6 +80,10 @@ export class AgentService {
         service: true,
         attachments: true,
         history: { orderBy: { createdAt: 'asc' } },
+        appointments: {
+          where: { status: { in: ['PENDING', 'BOOKED'] } },
+          orderBy: { startsAt: 'asc' },
+        },
       },
     });
   }
@@ -88,12 +93,50 @@ export class AgentService {
   }
 
   async getPrefectureStats() {
-    const total = await this.prisma.serviceRequest.count();
-    const pending = await this.prisma.serviceRequest.count({ where: { status: { in: ['SUBMITTED', 'IN_REVIEW', 'NEEDS_INFO'] } } });
-    const approved = await this.prisma.serviceRequest.count({ where: { status: 'APPROVED' } });
-    const rejected = await this.prisma.serviceRequest.count({ where: { status: 'REJECTED' } });
+    const localMonthParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Indian/Antananarivo',
+      year: 'numeric',
+      month: '2-digit',
+    }).formatToParts(new Date());
+    const localYear = Number(localMonthParts.find((part) => part.type === 'year')?.value);
+    const localMonth = Number(localMonthParts.find((part) => part.type === 'month')?.value);
+    const currentLocalMonthStart = new Date(Date.UTC(localYear, localMonth - 1, 1));
+    const monthlyStart = new Date(currentLocalMonthStart.getTime() - 3 * 60 * 60 * 1000);
 
-    return { total, pending, approved, rejected };
+    const [total, pending, approved, rejected, totalUsers, citizens, administrators, activeUsers, monthlyRequests, monthlyUsers] = await Promise.all([
+      this.prisma.serviceRequest.count(),
+      this.prisma.serviceRequest.count({ where: { status: { in: ['SUBMITTED', 'IN_REVIEW', 'NEEDS_INFO', 'IN_PROGRESS', 'PENDING_CHIEF', 'PENDING_PREFECT'] } } }),
+      this.prisma.serviceRequest.count({ where: { status: 'APPROVED' } }),
+      this.prisma.serviceRequest.count({ where: { status: 'REJECTED' } }),
+      this.prisma.user.count(),
+      this.prisma.user.count({ where: { role: 'CITIZEN' } }),
+      this.prisma.user.count({ where: { role: 'ADMIN' } }),
+      this.prisma.user.count({ where: { status: 'ACTIVE' } }),
+      this.prisma.$queryRaw<Array<{ month: string; count: bigint }>>`
+        SELECT to_char("createdAt" AT TIME ZONE 'Indian/Antananarivo', 'YYYY-MM') AS month, COUNT(*)::bigint AS count
+        FROM "ServiceRequest"
+        WHERE "createdAt" >= ${monthlyStart}
+        GROUP BY month
+        ORDER BY month
+      `,
+      this.prisma.$queryRaw<Array<{ month: string; count: bigint }>>`
+        SELECT to_char("createdAt" AT TIME ZONE 'Indian/Antananarivo', 'YYYY-MM') AS month, COUNT(*)::bigint AS count
+        FROM "User"
+        WHERE "createdAt" >= ${monthlyStart}
+        GROUP BY month
+        ORDER BY month
+      `,
+    ]);
+    const monthlySeries = Array.from({ length: 6 }, (_, index) => {
+      const month = new Date(Date.UTC(localYear, localMonth - 1 - 5 + index, 1));
+      const key = `${month.getUTCFullYear()}-${String(month.getUTCMonth() + 1).padStart(2, '0')}`;
+      return {
+        month: key,
+        requests: Number(monthlyRequests.find((entry) => entry.month === key)?.count ?? 0),
+        users: Number(monthlyUsers.find((entry) => entry.month === key)?.count ?? 0),
+      };
+    });
+    return { total, pending, approved, rejected, totalUsers, citizens, administrators, activeUsers, monthlySeries };
   }
 
   async approveRequest(requestId: string, changedById: string, notes?: string) {
@@ -102,7 +145,20 @@ export class AgentService {
     });
 
     if (!request) throw new NotFoundException('Demande introuvable');
+    if (request.type === RequestType.CIN_REQUEST || request.type === RequestType.CIN_RENEWAL) {
+      throw new ForbiddenException('Une demande de CIN ne peut être validée qu’après le rendez-vous de prise des empreintes');
+    }
     if (!['IN_REVIEW', 'PENDING_PREFECT'].includes(request.status)) throw new ForbiddenException('Cette demande doit être en instruction avant validation');
+    const formData = request.formData && typeof request.formData === 'object' && !Array.isArray(request.formData)
+      ? request.formData as Record<string, unknown>
+      : {};
+    const completeness = getRequestCompleteness(request.type, formData, await this.prisma.requestAttachment.findMany({
+      where: { requestId },
+      select: { label: true },
+    }));
+    if (completeness.missingFields.length || completeness.invalidFields.length || completeness.missingAttachments.length) {
+      throw new BadRequestException(`Le dossier ne peut pas être validé : ${[...completeness.missingFields, ...completeness.invalidFields, ...completeness.missingAttachments].join(', ')}`);
+    }
 
     const updated = await this.prisma.serviceRequest.update({
       where: { id: requestId },

@@ -11,6 +11,8 @@ export type AuthUser = {
   id: string;
   email: string;
   nom: string | null;
+  phone?: string | null;
+  cin?: string | null;
   role: 'CITIZEN' | 'ADMIN';
   roles: string[];
 };

@@ -36,36 +36,36 @@ export function CitizenDashboardPage() {
   return (
     <div style={{ display: 'grid', gap: '1.5rem' }}>
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-        <div className="panel" style={{ padding: 20 }}>
+        <div className="panel citizen-stat-card" style={{ padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <FileText size={20} />
             <strong>{t('Dossiers')}</strong>
           </div>
-          <h2 style={{ margin: '0.8rem 0 0.2rem', fontSize: '2rem' }}>{requestStats?.total ?? 0}</h2>
+          <h2 className="citizen-stat-value" style={{ margin: '0.8rem 0 0.2rem', fontSize: '2rem' }}>{requestStats?.total ?? 0}</h2>
           <small>{t('Total déclarations')}</small>
         </div>
-        <div className="panel" style={{ padding: 20 }}>
+        <div className="panel citizen-stat-card" style={{ padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <ClipboardCheck size={20} />
             <strong>{t('En cours')}</strong>
           </div>
-          <h2 style={{ margin: '0.8rem 0 0.2rem', fontSize: '2rem' }}>{requestStats?.inProgress ?? 0}</h2>
+          <h2 className="citizen-stat-value" style={{ margin: '0.8rem 0 0.2rem', fontSize: '2rem' }}>{requestStats?.inProgress ?? 0}</h2>
           <small>{t('À traiter')}</small>
         </div>
-        <div className="panel" style={{ padding: 20 }}>
+        <div className="panel citizen-stat-card" style={{ padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Sparkles size={20} />
             <strong>{t('Validés')}</strong>
           </div>
-          <h2 style={{ margin: '0.8rem 0 0.2rem', fontSize: '2rem' }}>{requestStats?.approved ?? 0}</h2>
+          <h2 className="citizen-stat-value" style={{ margin: '0.8rem 0 0.2rem', fontSize: '2rem' }}>{requestStats?.approved ?? 0}</h2>
           <small>{t('Documents délivrés')}</small>
         </div>
-        <div className="panel" style={{ padding: 20 }}>
+        <div className="panel citizen-stat-card" style={{ padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <XCircle size={20} />
             <strong>{t('Rejetés')}</strong>
           </div>
-          <h2 style={{ margin: '0.8rem 0 0.2rem', fontSize: '2rem' }}>{requestStats?.rejected ?? 0}</h2>
+          <h2 className="citizen-stat-value" style={{ margin: '0.8rem 0 0.2rem', fontSize: '2rem' }}>{requestStats?.rejected ?? 0}</h2>
           <small>{t('Dossiers refusés')}</small>
         </div>
       </section>
@@ -77,11 +77,11 @@ export function CitizenDashboardPage() {
             <NavLink to="/front/demandes" className="text-link">{t('Voir tout')}</NavLink>
           </div>
           {loadingServices ? <p>{t('Chargement…')}</p> : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            <div className="citizen-service-grid">
               {liveServices.map((service) => (
-                <div key={service.id} style={{ border: '1px solid #dfe7ef', borderRadius: 12, padding: 14, background: '#f8fbff' }}>
+                <div className="citizen-service-card" key={service.id}>
                   <strong>{language === 'mg' ? service.nameMg : service.nameFr}</strong>
-                  <small style={{ display: 'block', marginTop: 8, color: '#2d6cdf' }}>{service.code}</small>
+                  <small>{service.code}</small>
                 </div>
               ))}
             </div>

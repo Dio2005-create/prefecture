@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { Archive, Bell, Bot, CalendarDays, FileText, LayoutDashboard, Menu, Search, ShieldCheck, X, UserRound, BriefcaseBusiness, CheckSquare, LogOut, Settings, KeyRound, Languages, Moon, Sun } from 'lucide-react';
 import { useAuth, type AuthUser } from '../auth';
 import { usePreferences } from '../preferences';
+import { notificationService } from '../services/api';
 
 type AppLayoutVariant = 'frontoffice' | 'backoffice';
 
@@ -11,7 +13,6 @@ const citizenNavigation = [
   { to: '/front/demandes', label: 'Mes démarches', labelMg: 'Ny fangatahako', icon: FileText },
   { to: '/front/documents', label: 'Mes documents', labelMg: 'Ny taratasiko', icon: FileText },
   { to: '/front/informations', label: 'Textes officiels', labelMg: 'Lalàna ofisialy', icon: FileText },
-  { to: '/front/notifications', label: 'Notifications', labelMg: 'Fampandrenesana', icon: Bell },
   { to: '/front/rendez-vous', label: 'Rendez-vous', labelMg: 'Fotoana', icon: CalendarDays },
   { to: '/front/signalements', label: 'Signalements', labelMg: 'Fitarainana', icon: ShieldCheck },
   { to: '/front/assistant', label: 'Assistant IA', labelMg: 'Mpanampy IA', icon: Bot },
@@ -41,8 +42,15 @@ function getProfileName(user: AuthUser | null, variant: AppLayoutVariant, langua
   return language === 'mg' ? 'Mpandrindra' : 'Administrateur';
 }
 
-function NavigationPreferences() {
+function NavigationPreferences({ showNotifications }: { showNotifications: boolean }) {
   const { language, setLanguage, theme, toggleTheme, t } = usePreferences();
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: notificationService.list,
+    enabled: showNotifications,
+    refetchInterval: showNotifications ? 30000 : false,
+  });
+  const unreadCount = notifications.filter((notification: { status: string }) => notification.status !== 'READ').length;
   return <div className="nav-preferences">
     <span className="nav-preferences-label"><Languages size={15} /></span>
     <div className="language-switch" role="group" aria-label="Langue / Fiteny">
@@ -52,6 +60,10 @@ function NavigationPreferences() {
     <button className="icon-button theme-toggle" type="button" onClick={toggleTheme} aria-label={t(theme === 'light' ? 'Activer le mode sombre' : 'Activer le mode clair')} title={t(theme === 'light' ? 'Mode sombre' : 'Mode clair')}>
       {theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}
     </button>
+    {showNotifications && <NavLink className="icon-button notification-nav-button" to="/front/notifications" aria-label={t('Notifications non lues : {{count}}', { count: unreadCount })} title={t('Notifications')}>
+      <Bell size={17} />
+      {unreadCount > 0 && <span className="notification-nav-count">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+    </NavLink>}
   </div>;
 }
 
@@ -76,7 +88,7 @@ export function AppLayout({ children, variant }: { children: ReactNode; variant:
       <div className="sidebar-foot"><ShieldCheck size={16} /><span>{t('Environnement local')}<small>{t('Traitement confidentiel')}</small></span></div>
     </aside>
     {open && <button className="scrim" onClick={() => setOpen(false)} aria-label={t('Fermer le menu')} />}
-    <section className="workspace"><header className="topbar"><button className="icon-button menu-button" onClick={() => setOpen(true)} aria-label={t('Ouvrir le menu')}><Menu size={20} /></button><NavigationPreferences /><div className="profile"><span className="avatar">{variant === 'frontoffice' ? <UserRound size={16} /> : <BriefcaseBusiness size={16} />}</span><span><strong>{profileName}</strong><small>{t('Session locale')}</small></span>{variant === 'backoffice' && <><button className="icon-button profile-menu-trigger" onClick={() => setProfileMenuOpen((value) => !value)} aria-label={t('Ouvrir le menu du profil')}><Menu size={18} /></button>{profileMenuOpen && <div className="profile-menu"><NavLink to="/back/profil" onClick={() => setProfileMenuOpen(false)}><UserRound size={15} /> {t('Modifier le profil')}</NavLink><NavLink to="/back/mot-de-passe" onClick={() => setProfileMenuOpen(false)}><KeyRound size={15} /> {t('Changer le mot de passe')}</NavLink><button type="button" onClick={() => { setProfileMenuOpen(false); setConfirmLogout(true); }}><LogOut size={15} /> {t('Déconnexion')}</button></div>}</>}</div></header><main className="content">{children}</main></section>
+    <section className="workspace"><header className="topbar"><button className="icon-button menu-button" onClick={() => setOpen(true)} aria-label={t('Ouvrir le menu')}><Menu size={20} /></button><NavigationPreferences showNotifications={variant === 'frontoffice'} /><div className="profile"><span className="avatar">{variant === 'frontoffice' ? <UserRound size={16} /> : <BriefcaseBusiness size={16} />}</span><span><strong>{profileName}</strong><small>{t('Session locale')}</small></span>{variant === 'backoffice' && <><button className="icon-button profile-menu-trigger" onClick={() => setProfileMenuOpen((value) => !value)} aria-label={t('Ouvrir le menu du profil')}><Menu size={18} /></button>{profileMenuOpen && <div className="profile-menu"><NavLink to="/back/profil" onClick={() => setProfileMenuOpen(false)}><UserRound size={15} /> {t('Modifier le profil')}</NavLink><NavLink to="/back/mot-de-passe" onClick={() => setProfileMenuOpen(false)}><KeyRound size={15} /> {t('Changer le mot de passe')}</NavLink><button type="button" onClick={() => { setProfileMenuOpen(false); setConfirmLogout(true); }}><LogOut size={15} /> {t('Déconnexion')}</button></div>}</>}</div></header><main className="content">{children}</main></section>
     {confirmLogout && <div className="modal-backdrop" role="presentation"><section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="logout-title"><p className="eyebrow">{t('Session sécurisée')}</p><h2 id="logout-title">{t('Confirmer la déconnexion')}</h2><p>{t('Votre session locale sera fermée sur cet appareil.')}</p><div className="modal-actions"><button className="button" onClick={() => setConfirmLogout(false)}>{t('Annuler')}</button><button className="button primary" onClick={() => { setConfirmLogout(false); void logout(); }}>{t('Se déconnecter')}</button></div></section></div>}
   </div>;
 }

@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import axios from 'axios';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, X, FileText, AlertCircle, Download, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
-import { adminService } from '../services/api';
+import { adminService, appointmentService } from '../services/api';
 import { Loading, Empty, Pagination } from '../components/ui';
 import type { CitizenRequest } from '../types';
 import { usePreferences } from '../preferences';
@@ -30,23 +31,27 @@ const terminalStatuses = new Set(['APPROVED', 'REJECTED', 'ARCHIVED', 'CANCELLED
 
 interface RequestCard {
   request: CitizenRequest;
-  onApprove: (id: string) => void;
+  onApprove: (id: string, notes?: string, slotId?: string) => void;
   onReject: (id: string, reason: string) => void;
   onRequestInfo: (id: string, info: string) => void;
   onEdit: (id: string, data: string) => void;
   isLoading: boolean;
   approveLabel: string;
+  appointmentSlots: Array<{ id: string; startsAt: string; endsAt: string; office: string }>;
 }
 
-function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLoading, approveLabel }: RequestCard) {
+function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLoading, approveLabel, appointmentSlots }: RequestCard) {
   const { t, language } = usePreferences();
   const [action, setAction] = useState<'approve' | 'reject' | 'info' | 'edit' | null>(null);
   const [input, setInput] = useState(action === 'edit' ? JSON.stringify(request.formData ?? {}, null, 2) : '');
+  const [selectedAppointmentSlot, setSelectedAppointmentSlot] = useState('');
   const [attachmentsOpen, setAttachmentsOpen] = useState(false);
+  const isCinRequest = ['CIN_REQUEST', 'CIN_RENEWAL'].includes(request.type);
+  const hasScheduledCinAppointment = isCinRequest && Boolean(request.appointments?.some((appointment) => ['PENDING', 'BOOKED'].includes(appointment.status)));
 
   const handleAction = () => {
     if (action === 'approve') {
-      onApprove(request.id);
+      onApprove(request.id, input.trim(), isCinRequest && request.status === 'IN_REVIEW' ? selectedAppointmentSlot : undefined);
     } else if (action === 'reject') {
       onReject(request.id, input.trim());
     } else if (action === 'info') {
@@ -64,16 +69,16 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
         <div>
           <p className="eyebrow">{language === 'mg' ? request.service?.nameMg || t('Service inconnu') : request.service?.nameFr || t('Service inconnu')}</p>
           <h3 style={{ margin: '0.4rem 0', fontSize: '1.1rem' }}>{request.title || t('Demande sans titre')}</h3>
-          <small style={{ color: 'var(--color-muted)' }}>
+          <small className="request-citizen-meta">
             {t('Citoyen')} : {request.user?.nom || request.user?.email || t('Inconnu')} • {request.user?.email}
           </small>
-          {request.description && <p style={{ marginTop: 8, fontSize: '0.9rem', color: 'var(--color-muted)' }}>{request.description}</p>}
+          {request.description && <p className="request-card-description">{request.description}</p>}
           {request.formData && Object.keys(request.formData).length > 0 && (
-            <div style={{ marginTop: 12, padding: 12, background: 'var(--color-blue-light)', borderRadius: 6 }}>
+            <div className="request-card-details" style={{ marginTop: 12, padding: 12, borderRadius: 6 }}>
               <strong style={{ fontSize: '0.85rem' }}>{t('Informations déclarées')}</strong>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6, marginTop: 8 }}>
                 {Object.entries(request.formData).map(([key, value]) => (
-                  <small key={key}><strong>{t(formFieldLabels[key] ?? formatFieldName(key))} :</strong> {formatFieldValue(value)}</small>
+                  <small className="request-card-field" key={key}><strong>{t(formFieldLabels[key] ?? formatFieldName(key))} :</strong> {formatFieldValue(value)}</small>
                 ))}
               </div>
             </div>
@@ -89,8 +94,9 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
           )}
         </div>
         <div className="request-card-footer">
-          <span className="request-card-status">{t(formatStatus(request.status))}</span>
-          {terminalStatuses.has(request.status) ? <small className="muted">{t('Actions indisponibles : dossier déjà traité.')}</small> : <div className="request-card-actions">
+          <span className="request-card-status">{t(hasScheduledCinAppointment ? 'En attente du rendez-vous d’empreintes' : formatStatus(request.status))}</span>
+          {hasScheduledCinAppointment && <small className="muted">{t('Rendez-vous attribué')}: {new Date(request.appointments?.find((appointment) => ['PENDING', 'BOOKED'].includes(appointment.status))?.startsAt ?? '').toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })}</small>}
+          {terminalStatuses.has(request.status) || hasScheduledCinAppointment ? <small className="muted">{t(hasScheduledCinAppointment ? 'En attente de la prise des empreintes pour valider la demande.' : 'Actions indisponibles : dossier déjà traité.')}</small> : <div className="request-card-actions">
           <button
             className="button small"
             onClick={() => setAction('approve')}
@@ -126,22 +132,34 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
           {action === 'approve' && (
             <div>
-              <label style={{ display: 'block', marginBottom: 8 }}>
-                <small style={{ fontWeight: 500 }}>{t("Notes d'approbation (optionnel)")}</small>
-              </label>
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={t('Notes...')}
-                style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid var(--color-border)', fontSize: '0.9rem' }}
-                rows={2}
-              />
+              {isCinRequest && request.status === 'IN_REVIEW' ? <>
+                <label className="request-field">{t('Créneau pour les empreintes')} *
+                  <select value={selectedAppointmentSlot} onChange={(event) => setSelectedAppointmentSlot(event.target.value)}>
+                    <option value="">{appointmentSlots.length ? t('Sélectionner un créneau') : t('Aucun créneau futur disponible')}</option>
+                    {appointmentSlots.map((slot) => <option key={slot.id} value={slot.id}>
+                      {new Date(slot.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })} – {new Date(slot.endsAt).toLocaleTimeString(language === 'mg' ? 'mg-MG' : 'fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Indian/Antananarivo' })} · {slot.office}
+                    </option>)}
+                  </select>
+                </label>
+                <p>{t('La demande restera en attente jusqu’à la fin du rendez-vous. La CIN sera ensuite disponible au guichet.')}</p>
+              </> : <>
+                <label style={{ display: 'block', marginBottom: 8 }}>
+                  <small style={{ fontWeight: 500 }}>{t("Notes d'approbation (optionnel)")}</small>
+                </label>
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={t('Notes...')}
+                  style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid var(--color-border)', fontSize: '0.9rem' }}
+                  rows={2}
+                />
+              </>}
               <div className="request-action-footer">
                 <button className="button request-cancel-button" onClick={() => setAction(null)}>
                   {t('Annuler')}
                 </button>
-                <button className="button primary request-confirm-button" onClick={handleAction} disabled={isLoading}>
-                  {t('Confirmer approbation')}
+                <button className="button primary request-confirm-button" onClick={handleAction} disabled={isLoading || (isCinRequest && request.status === 'IN_REVIEW' && !selectedAppointmentSlot)}>
+                  {t(isCinRequest && request.status === 'IN_REVIEW' ? 'Attribuer le rendez-vous' : 'Confirmer approbation')}
                 </button>
               </div>
             </div>
@@ -216,18 +234,25 @@ export function AdminWorkflowPage() {
   const { t } = usePreferences();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ['admin-stats'],
-    queryFn: () => adminService.getStats(),
-  });
-
+  const [workflowError, setWorkflowError] = useState('');
   const { data: requests, isLoading: requestsLoading } = useQuery({
     queryKey: ['admin-requests'],
     queryFn: () => adminService.listRequests(),
   });
+  const { data: appointmentSlots = [] } = useQuery({
+    queryKey: ['admin-appointment-slots'],
+    queryFn: appointmentService.listSlotsForAdmin,
+  });
+  const freeFutureSlots = appointmentSlots
+    .filter((slot: { isActive: boolean; startsAt: string; appointments: Array<{ id: string }> }) => slot.isActive && new Date(slot.startsAt) > new Date() && slot.appointments.length === 0);
 
   const [actionLoading, setActionLoading] = useState(false);
-  const getApproveLabel = (status: string) => t(status === 'IN_REVIEW' ? 'Valider et délivrer' : 'Prendre en instruction');
+  const getApproveLabel = (status: string, type: string) => {
+    if (status !== 'IN_REVIEW') return t('Prendre en instruction');
+    return t(['CIN_REQUEST', 'CIN_RENEWAL'].includes(type)
+      ? 'Valider le dossier — rendez-vous empreintes au guichet'
+      : 'Valider et délivrer');
+  };
   const visibleRequests = (requests ?? []).slice((page - 1) * 5, page * 5);
   const refreshRequestData = async () => {
     await Promise.all([
@@ -235,18 +260,28 @@ export function AdminWorkflowPage() {
       queryClient.invalidateQueries({ queryKey: ['admin-stats'] }),
       queryClient.invalidateQueries({ queryKey: ['citizen-requests'] }),
       queryClient.invalidateQueries({ queryKey: ['citizen-stats'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-appointment-slots'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-appointments'] }),
+      queryClient.invalidateQueries({ queryKey: ['appointments'] }),
     ]);
   };
 
-  const handleApprove = async (id: string) => {
+  const handleApprove = async (id: string, notes?: string, slotId?: string) => {
     setActionLoading(true);
+    setWorkflowError('');
     try {
       const request = requests?.find((item) => item.id === id);
-      if (request?.status === 'IN_REVIEW') await adminService.approveRequest(id);
-      else await adminService.submitForReview(id, 'Dossier pris en charge par l’administration');
+      if (request?.status === 'IN_REVIEW' && ['CIN_REQUEST', 'CIN_RENEWAL'].includes(request.type)) {
+        if (!slotId) throw new Error('Un créneau d’empreintes doit être sélectionné');
+        await adminService.assignCinAppointment(id, slotId);
+      } else if (request?.status === 'IN_REVIEW') await adminService.approveRequest(id, notes);
+      else await adminService.submitForReview(id, notes || 'Dossier pris en charge par l’administration');
       await refreshRequestData();
     } catch (error) {
       console.error('Erreur lors de l\'approbation:', error);
+      setWorkflowError(axios.isAxiosError(error)
+        ? (error.response?.data as { message?: string } | undefined)?.message ?? t('La validation du dossier a échoué.')
+        : error instanceof Error ? error.message : t('La validation du dossier a échoué.'));
     } finally {
       setActionLoading(false);
     }
@@ -291,39 +326,17 @@ export function AdminWorkflowPage() {
     }
   };
 
-  if (statsLoading || requestsLoading) return <Loading />;
+  if (requestsLoading) return <Loading />;
 
   return (
     <div style={{ display: 'grid', gap: '2rem' }}>
-      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem' }}>
-        <div className="panel" style={{ padding: 20 }}>
-          <p className="eyebrow">{t('Total')}</p>
-          <h2 style={{ margin: '0.6rem 0 0', fontSize: '2rem' }}>{stats?.total ?? 0}</h2>
-          <small>{t('Demandes')}</small>
-        </div>
-        <div className="panel" style={{ padding: 20, borderLeft: '4px solid var(--color-orange)' }}>
-          <p className="eyebrow">{t('En attente')}</p>
-          <h2 style={{ margin: '0.6rem 0 0', fontSize: '2rem' }}>{stats?.pending ?? 0}</h2>
-          <small>{t('À traiter')}</small>
-        </div>
-        <div className="panel" style={{ padding: 20, borderLeft: '4px solid var(--color-green)' }}>
-          <p className="eyebrow">{t('Approuvées')}</p>
-          <h2 style={{ margin: '0.6rem 0 0', fontSize: '2rem' }}>{stats?.approved ?? 0}</h2>
-          <small>{t('Traitées')}</small>
-        </div>
-        <div className="panel" style={{ padding: 20, borderLeft: '4px solid var(--color-red)' }}>
-          <p className="eyebrow">{t('Rejetées')}</p>
-          <h2 style={{ margin: '0.6rem 0 0', fontSize: '2rem' }}>{stats?.rejected ?? 0}</h2>
-          <small>{t('Non valides')}</small>
-        </div>
-      </section>
-
       <div className="panel" style={{ padding: 20 }}>
         <div style={{ marginBottom: 20 }}>
           <h3 style={{ marginTop: 0 }}>{t('Demandes en traitement')}</h3>
           <small style={{ color: 'var(--color-muted)' }}>{t('Approuver, rejeter ou demander des informations complémentaires')}</small>
         </div>
 
+        {workflowError && <p className="error-message" role="alert">{t(workflowError)}</p>}
         {requestsLoading ? (
           <Loading />
         ) : requests && requests.length > 0 ? (
@@ -337,7 +350,8 @@ export function AdminWorkflowPage() {
                 onRequestInfo={handleRequestInfo}
                 onEdit={handleEdit}
                 isLoading={actionLoading}
-                approveLabel={getApproveLabel(request.status)}
+                approveLabel={getApproveLabel(request.status, request.type)}
+                appointmentSlots={freeFutureSlots}
               />
             ))}
             <Pagination page={page} totalPages={Math.max(1, Math.ceil(requests.length / 5))} onChange={setPage} />

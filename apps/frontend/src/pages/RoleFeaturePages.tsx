@@ -1,8 +1,8 @@
-import { Bell, CalendarDays, FileText, ShieldCheck, Users, Download, Power, Trash2, Eye, X } from 'lucide-react';
+import { Bell, CalendarDays, FileText, ShieldCheck, Users, Download, Power, Trash2, Eye, X, CircleDollarSign, KeyRound, UserRound, UserPlus, ShieldAlert, ArrowLeft } from 'lucide-react';
 import axios from 'axios';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { adminService, appointmentService, documentService, notificationService, prefectureService, userService } from '../services/api';
+import { adminService, appointmentService, authService, documentService, notificationService, prefectureService, userService } from '../services/api';
 import { Loading, Pagination, Toast, useToast } from '../components/ui';
 import { useAuth } from '../auth';
 import { usePreferences } from '../preferences';
@@ -39,7 +39,10 @@ export function CitizenDocumentsPage() {
       }
     }
   };
-  return <section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Espace citoyen')}</p><h1>{t('Mes documents délivrés')}</h1><p>{t('Retrouvez ici les documents validés par la Préfecture d’Ihosy.')}</p>{downloadError && <p className="error-message">{t(downloadError)}</p>}{isLoading ? <p>{t('Chargement...')}</p> : approved.length === 0 ? <div className="empty-state"><FileText size={28} /><span>{t('Aucun document délivré pour le moment.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{approved.map((request: { id: string; title?: string; service?: { nameFr: string; nameMg: string } }) => <div className="recent-row" key={request.id}><FileText size={18} /><span><strong>{request.title ?? (language === 'mg' ? request.service?.nameMg : request.service?.nameFr)}</strong><small>{t('PDF administratif disponible')}</small></span><button className="button small" onClick={() => void download(request.id)}>{t('Télécharger')}</button></div>)}</div>}</section>;
+  return <section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Espace citoyen')}</p><h1>{t('Mes documents délivrés')}</h1><p>{t('Retrouvez ici les documents validés par la Préfecture d’Ihosy.')}</p>{downloadError && <p className="error-message">{t(downloadError)}</p>}{isLoading ? <p>{t('Chargement...')}</p> : approved.length === 0 ? <div className="empty-state"><FileText size={28} /><span>{t('Aucun document délivré pour le moment.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{approved.map((request: { id: string; title?: string; type: string; service?: { nameFr: string; nameMg: string } }) => {
+    const isCin = ['CIN_REQUEST', 'CIN_RENEWAL'].includes(request.type);
+    return <div className="recent-row" key={request.id}><FileText size={18} /><span><strong>{request.title ?? (language === 'mg' ? request.service?.nameMg : request.service?.nameFr)}</strong><small>{t(isCin ? 'Prise des empreintes requise : prenez rendez-vous pour le retrait au guichet.' : 'PDF administratif disponible')}</small></span>{!isCin && <button className="button small" onClick={() => void download(request.id)}>{t('Télécharger')}</button>}</div>;
+  })}</div>}</section>;
 }
 
 export function AssociationAndOngPage() {
@@ -122,34 +125,144 @@ export function NotificationsPage() {
   const filtered = notifications.filter((notification: { status: string }) => filter === 'ALL' || (filter === 'READ' ? notification.status === 'READ' : notification.status !== 'READ'));
   const visible = filtered.slice((page - 1) * 5, page * 5);
   const markRead = async (id: string) => { await notificationService.markAsRead(id); await client.invalidateQueries({ queryKey: ['notifications'] }); };
-  return <section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Information')}</p><h1>{t('Notifications')}</h1><p>{t('Les mises à jour de vos dossiers apparaîtront ici.')}</p><div className="notification-tabs">{[['ALL', 'Toutes'], ['UNREAD', 'Non lues'], ['READ', 'Lues']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => { setFilter(value as 'ALL' | 'UNREAD' | 'READ'); setPage(1); }}>{t(label)}</button>)}</div>{isLoading ? <p>{t('Chargement...')}</p> : visible.length === 0 ? <div className="empty-state"><Bell size={28} /><span>{t('Aucune notification.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{visible.map((notification: { id: string; title: string; message: string; status: string; createdAt: string }) => <article key={notification.id} className="recent-row"><Bell size={18} /><span><strong>{t(notification.title)}</strong><small>{t(notification.message)}</small></span><button className="button small" disabled={notification.status === 'READ'} onClick={() => void markRead(notification.id)}>{t(notification.status === 'READ' ? 'Lue' : 'Marquer lue')}</button></article>)}</div>}<Pagination page={page} totalPages={Math.max(1, Math.ceil(filtered.length / 5))} onChange={setPage} /></section>;
+  return <section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Information')}</p><h1>{t('Notifications')}</h1><p>{t('Les mises à jour de vos dossiers apparaîtront ici.')}</p><div className="notification-tabs">{[['ALL', 'Toutes'], ['UNREAD', 'Non lues'], ['READ', 'Lues']].map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => { setFilter(value as 'ALL' | 'UNREAD' | 'READ'); setPage(1); }}>{t(label)}</button>)}</div>{isLoading ? <p>{t('Chargement...')}</p> : visible.length === 0 ? <div className="empty-state"><Bell size={28} /><span>{t('Aucune notification.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{visible.map((notification: { id: string; title: string; message: string; status: string; createdAt: string }) => <article key={notification.id} className={`recent-row notification-row ${notification.status === 'READ' ? 'notification-read' : 'notification-unread'}`}><Bell size={18} /><span><strong>{t(notification.title)}</strong><small>{t(notification.message)}</small></span><button className="button small" disabled={notification.status === 'READ'} onClick={() => void markRead(notification.id)}>{t(notification.status === 'READ' ? 'Lue' : 'Marquer lue')}</button></article>)}</div>}<Pagination page={page} totalPages={Math.max(1, Math.ceil(filtered.length / 5))} onChange={setPage} /></section>;
 }
 
 export function UsersPage() {
-  const { user } = useAuth();
   const { t } = usePreferences();
-  const { toast, notify } = useToast();
   const { data: users = [], isLoading } = useQuery({ queryKey: ['users'], queryFn: userService.list });
-  const client = useQueryClient();
-  const [adminForm, setAdminForm] = useState({ email: '', password: '', nom: '', phone: '' });
-  const [adminError, setAdminError] = useState('');
-  const createAdmin = async () => { setAdminError(''); try { await adminService.createAdmin(adminForm); setAdminForm({ email: '', password: '', nom: '', phone: '' }); await client.invalidateQueries({ queryKey: ['users'] }); notify('success', t('Compte administrateur créé avec succès.')); } catch { const message = t('La création du compte administrateur a échoué.'); setAdminError(message); notify('error', message); } };
   const citizens = users.filter((user) => user.role === 'CITIZEN');
   const admins = users.filter((user) => user.role === 'ADMIN');
   const group = (title: string, entries: typeof users) => <section><h2>{t(title)}</h2><div style={{ display: 'grid', gap: 10 }}>{entries.length === 0 ? <p className="muted">{t('Aucun utilisateur.')}</p> : entries.map((user) => <div className="recent-row" key={user.id}><Users size={18} /><span><strong>{user.nom ?? user.email}</strong><small>{user.email} · {t(user.status)}</small></span></div>)}</div></section>;
-  return <><section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Administration')}</p><h1>{t('Utilisateurs')}</h1><p>{t('Les citoyens et les administrateurs sont gérés dans deux espaces distincts.')}</p>{user?.role === 'ADMIN' && <div className="admin-create-form"><h2>{t('Créer un administrateur')}</h2><small>{t('Cette action est réservée aux administrateurs.')}</small><input placeholder={t('Nom')} value={adminForm.nom} onChange={(event) => setAdminForm({ ...adminForm, nom: event.target.value })} /><input type="email" placeholder={t('Email')} value={adminForm.email} onChange={(event) => setAdminForm({ ...adminForm, email: event.target.value })} /><input placeholder={t('Téléphone')} value={adminForm.phone} onChange={(event) => setAdminForm({ ...adminForm, phone: event.target.value })} /><input type="password" placeholder={t('Mot de passe (8 caractères minimum)')} value={adminForm.password} onChange={(event) => setAdminForm({ ...adminForm, password: event.target.value })} /><button className="button primary" onClick={() => void createAdmin()} disabled={!adminForm.email || adminForm.password.length < 8}>{t('Créer le compte')}</button>{adminError && <p className="error-message">{adminError}</p>}</div>}{isLoading ? <p>{t('Chargement...')}</p> : <div style={{ display: 'grid', gap: 28 }}>{group('Administrateurs', admins)}{group('Citoyens', citizens)}</div>}<div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}><ShieldCheck size={18} /><strong>{t('Accès séparés par rôle')}</strong></div></section><Toast toast={toast} /></>;
+  return <section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Administration')}</p><h1>{t('Utilisateurs')}</h1><p>{t('Les citoyens et les administrateurs sont gérés dans deux espaces distincts.')}</p>{isLoading ? <Loading /> : <div style={{ display: 'grid', gap: 28 }}>{group('Administrateurs', admins)}{group('Citoyens', citizens)}</div>}<div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}><ShieldCheck size={18} /><strong>{t('Accès séparés par rôle')}</strong></div></section>;
 }
 
 export function AdminSettingsPage() {
   const { t } = usePreferences();
   const { toast, notify } = useToast();
-  const { data: settings = [], isLoading } = useQuery({ queryKey: ['admin-settings'], queryFn: adminService.listSettings });
+  const { user, updateUser, logout } = useAuth();
+  const [section, setSection] = useState<'tariffs' | 'profile' | 'password' | 'citizens' | 'admins' | null>(null);
+  const [confirmation, setConfirmation] = useState<{ title: string; message: string; action: () => Promise<void>; destructive?: boolean } | null>(null);
+  const [confirmPending, setConfirmPending] = useState(false);
+  const { data: settings = [], isLoading } = useQuery({ queryKey: ['admin-settings'], queryFn: adminService.listSettings, enabled: section === 'tariffs' || section === null });
   const client = useQueryClient();
+  const { data: users = [], isLoading: usersLoading } = useQuery({ queryKey: ['users'], queryFn: userService.list, enabled: section === 'citizens' });
   const tariffs = [['BIRTH_CERTIFICATE', 'Acte de naissance', '5000'], ['RESIDENCE_CERTIFICATE', 'Certificat de résidence', '3000'], ['NATIONALITY_CERTIFICATE', 'Certificat de nationalité', '10000'], ['CIN_REQUEST', 'Demande de CIN', '2000'], ['CIN_RENEWAL', 'Renouvellement de CIN', '2000'], ['GOOD_CHARACTER_CERTIFICATE', 'Certificat de bonne vie et mœurs', '3000'], ['BUILDING_PERMIT', 'Permis de construire', '25000'], ['LAND_STATUS', 'Situation foncière', '10000'], ['COMMERCIAL_LICENSE', 'Licence commerciale', '15000'], ['VEHICLE_REGISTRATION', 'Immatriculation de véhicule', '10000'], ['LOSS_DECLARATION', 'Déclaration de perte', '2000'], ['SIGNATURE_LEGALIZATION', 'Légalisation de signature', '5000'], ['COMPLAINT', 'Signalement ou réclamation', '0'], ['SPECIAL_REQUEST', 'Demande particulière', '5000'], ['ASSOCIATION_DECLARATION', 'Déclaration d’association / ONG', '20000'], ['EVENT_AUTHORIZATION', 'Autorisation de manifestation', '15000'], ['ACCREDITATION', 'Demande d’agrément', '20000'], ['ADMINISTRATIVE_AUTHORIZATION', 'Autorisation administrative', '10000']] as const;
   const [values, setValues] = useState<Record<string, string>>({});
   useEffect(() => { setValues(Object.fromEntries(tariffs.map(([type, , fallback]) => [type, settings.find((item) => item.key === `fee.${type}`)?.value ?? fallback]))); }, [settings]);
-  const save = async () => { try { await adminService.updateSettings(Object.fromEntries(Object.entries(values).map(([type, value]) => [`fee.${type}`, value]))); await client.invalidateQueries({ queryKey: ['admin-settings'] }); notify('success', t('Les tarifs ont été enregistrés.')); } catch { notify('error', t('Impossible d’enregistrer les tarifs.')); } };
-  return <><section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Configuration')}</p><h1>{t('Tarifs des 18 démarches')}</h1><p>{t('Configurez les tarifs de référence des démarches administratives.')}</p>{isLoading ? <Loading /> : <div className="admin-settings-form tariff-grid">{tariffs.map(([type, label]) => <label key={type}>{t(label)}<input type="number" min="0" value={values[type] ?? ''} onChange={(event) => setValues({ ...values, [type]: event.target.value })} /><small>Ar</small></label>)}<button className="button primary" onClick={() => void save()}>{t('Enregistrer les tarifs')}</button></div>}</section><Toast toast={toast} /></>;
+  const [profile, setProfile] = useState({ nom: user?.nom ?? '', email: user?.email ?? '', phone: user?.phone ?? '', cin: user?.cin ?? '' });
+  const [password, setPassword] = useState({ current: '', next: '', confirmation: '' });
+  const [adminForm, setAdminForm] = useState({ email: '', password: '', nom: '', phone: '' });
+  const isSuperAdmin = user?.roles.includes('SUPERADMIN') ?? false;
+  const askForConfirmation = (title: string, message: string, action: () => Promise<void>, destructive = false) =>
+    setConfirmation({ title, message, action, destructive });
+  const confirmAction = async () => {
+    if (!confirmation) return;
+    setConfirmPending(true);
+    try {
+      await confirmation.action();
+      setConfirmation(null);
+    } finally {
+      setConfirmPending(false);
+    }
+  };
+  const saveTariffs = async () => {
+    try {
+      await adminService.updateSettings(Object.fromEntries(Object.entries(values).map(([type, value]) => [`fee.${type}`, value])));
+      await client.invalidateQueries({ queryKey: ['admin-settings'] });
+      notify('success', t('Les tarifs ont été enregistrés.'));
+    } catch {
+      notify('error', t('Impossible d’enregistrer les tarifs.'));
+    }
+  };
+  const saveProfile = async () => {
+    try {
+      const result = await authService.updateProfile(profile);
+      updateUser(result.user as import('../auth').AuthUser);
+      notify('success', t('Profil mis à jour avec succès.'));
+    } catch (error) {
+      const message = axios.isAxiosError(error) ? (error.response?.data as { message?: string } | undefined)?.message : undefined;
+      notify('error', t(message ?? 'Impossible de mettre à jour le profil.'));
+    }
+  };
+  const savePassword = async () => {
+    if (password.next.length < 8 || password.next !== password.confirmation) {
+      notify('error', t(password.next.length < 8 ? 'Le nouveau mot de passe doit contenir au moins 8 caractères.' : 'La confirmation ne correspond pas au nouveau mot de passe.'));
+      return;
+    }
+    try {
+      await authService.changePassword(password.current, password.next);
+      notify('success', t('Mot de passe modifié avec succès. Vous allez être déconnecté.'));
+      window.setTimeout(() => void logout(), 1200);
+    } catch (error) {
+      const message = axios.isAxiosError(error) ? (error.response?.data as { message?: string } | undefined)?.message : undefined;
+      notify('error', t(message ?? 'Impossible de modifier le mot de passe.'));
+    }
+  };
+  const createAdmin = async () => {
+    try {
+      await adminService.createAdmin(adminForm);
+      setAdminForm({ email: '', password: '', nom: '', phone: '' });
+      await client.invalidateQueries({ queryKey: ['users'] });
+      notify('success', t('Compte administrateur créé avec succès.'));
+    } catch (error) {
+      const message = axios.isAxiosError(error) ? (error.response?.data as { message?: string } | undefined)?.message : undefined;
+      notify('error', t(message ?? 'La création du compte administrateur a échoué.'));
+    }
+  };
+  const updateCitizenStatus = async (id: string, nextStatus: 'ACTIVE' | 'INACTIVE') => {
+    try {
+      await userService.updateCitizenStatus(id, nextStatus);
+      await client.invalidateQueries({ queryKey: ['users'] });
+      notify('success', t(nextStatus === 'INACTIVE' ? 'Compte citoyen désactivé.' : 'Compte citoyen réactivé.'));
+    } catch (error) {
+      await client.invalidateQueries({ queryKey: ['users'] });
+      const message = axios.isAxiosError(error) ? (error.response?.data as { message?: string } | undefined)?.message : undefined;
+      notify('error', t(message ?? 'Impossible de modifier le statut du compte.'));
+    }
+  };
+  const settingSections = [
+    { id: 'tariffs' as const, label: 'Tarifs des démarches', description: 'Configurer les montants des services administratifs.', Icon: CircleDollarSign },
+    { id: 'profile' as const, label: 'Mon profil', description: 'Modifier vos informations personnelles.', Icon: UserRound },
+    { id: 'password' as const, label: 'Sécurité du compte', description: 'Changer le mot de passe administrateur.', Icon: KeyRound },
+    { id: 'citizens' as const, label: 'Comptes citoyens', description: 'Désactiver ou réactiver un accès citoyen.', Icon: ShieldAlert },
+    ...(isSuperAdmin ? [{ id: 'admins' as const, label: 'Administrateurs', description: 'Créer un compte administrateur.', Icon: UserPlus }] : []),
+  ];
+  const sectionTitles: Record<Exclude<typeof section, null>, string> = {
+    tariffs: 'Tarifs des démarches',
+    profile: 'Mon profil',
+    password: 'Sécurité du compte',
+    citizens: 'Comptes citoyens',
+    admins: 'Administrateurs',
+  };
+  const citizenAccounts = users.filter((entry) => entry.role === 'CITIZEN');
+  const confirmationDialog = confirmation && <div className="modal-backdrop" role="presentation">
+    <section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="admin-settings-confirm-title">
+      <p className="eyebrow">{t('Confirmation requise')}</p>
+      <h2 id="admin-settings-confirm-title">{t(confirmation.title)}</h2>
+      <p>{t(confirmation.message)}</p>
+      <div className="modal-actions">
+        <button className="button" type="button" disabled={confirmPending} onClick={() => setConfirmation(null)}>{t('Annuler')}</button>
+        <button className={`button ${confirmation.destructive ? 'danger' : 'primary'}`} type="button" disabled={confirmPending} onClick={() => void confirmAction()}>{t(confirmPending ? 'Traitement...' : 'Confirmer')}</button>
+      </div>
+    </section>
+  </div>;
+  return <><section className="panel admin-settings-home" style={{ padding: 24 }}>
+    <p className="eyebrow">{t('Configuration')}</p>
+    <h1>{t('Paramètres')}</h1>
+    <p>{t('Choisissez une rubrique pour consulter ou modifier les paramètres de l’administration.')}</p>
+    {!section ? <div className="admin-settings-menu">{settingSections.map(({ id, label, description, Icon }) => <button className="admin-settings-menu-item" type="button" key={id} onClick={() => setSection(id)}><span className="admin-settings-menu-icon"><Icon size={20} /></span><span><strong>{t(label)}</strong><small>{t(description)}</small></span><ArrowLeft className="admin-settings-menu-arrow" size={17} /></button>)}</div> : <>
+      <button className="button admin-settings-back" type="button" onClick={() => setSection(null)}><ArrowLeft size={16} />{t('Tous les paramètres')}</button>
+      <div className="admin-settings-detail">
+      <h2 className="admin-settings-section-title">{t(sectionTitles[section])}</h2>
+      {section === 'tariffs' && (isLoading ? <Loading /> : <div className="admin-settings-form tariff-grid">{tariffs.map(([type, label]) => <label key={type}>{t(label)}<input type="number" min="0" value={values[type] ?? ''} onChange={(event) => setValues({ ...values, [type]: event.target.value })} /><small>Ar</small></label>)}<button className="button primary" type="button" onClick={() => askForConfirmation('Enregistrer les tarifs ?', 'Confirmez-vous l’enregistrement des nouveaux montants des démarches ?', saveTariffs)}>{t('Enregistrer les tarifs')}</button></div>)}
+      {section === 'profile' && <form className="settings-form admin-settings-profile" onSubmit={(event) => { event.preventDefault(); askForConfirmation('Confirmer la modification du profil ?', 'Vos informations de profil seront mises à jour.', saveProfile); }}><label className="request-field">{t('Nom complet')}<input value={profile.nom} onChange={(event) => setProfile({ ...profile, nom: event.target.value })} /></label><label className="request-field">{t('Adresse email')}<input type="email" required value={profile.email} onChange={(event) => setProfile({ ...profile, email: event.target.value })} /></label><label className="request-field">{t('Numéro de téléphone')}<input value={profile.phone} onChange={(event) => setProfile({ ...profile, phone: event.target.value })} /></label><label className="request-field">CIN<input value={profile.cin} maxLength={12} inputMode="numeric" onChange={(event) => setProfile({ ...profile, cin: event.target.value.replace(/\D/g, '').slice(0, 12) })} /></label><button className="button primary" type="submit">{t('Enregistrer le profil')}</button></form>}
+      {section === 'password' && <form className="settings-form admin-settings-profile" onSubmit={(event) => { event.preventDefault(); if (password.next.length < 8 || password.next !== password.confirmation) { void savePassword(); return; } askForConfirmation('Confirmer le changement de mot de passe ?', 'Vous serez déconnecté et devrez vous reconnecter avec le nouveau mot de passe.', savePassword); }}><label className="request-field">{t('Mot de passe actuel')}<input type="password" required autoComplete="current-password" value={password.current} onChange={(event) => setPassword({ ...password, current: event.target.value })} /></label><label className="request-field">{t('Nouveau mot de passe')}<input type="password" required minLength={8} autoComplete="new-password" value={password.next} onChange={(event) => setPassword({ ...password, next: event.target.value })} /></label><label className="request-field">{t('Confirmer le nouveau mot de passe')}<input type="password" required minLength={8} autoComplete="new-password" value={password.confirmation} onChange={(event) => setPassword({ ...password, confirmation: event.target.value })} /></label><button className="button primary" type="submit">{t('Modifier le mot de passe')}</button></form>}
+      {section === 'citizens' && (usersLoading ? <Loading /> : citizenAccounts.length ? <div className="admin-citizen-list">{citizenAccounts.map((citizen) => <article className="recent-row" key={citizen.id}><Users size={18} /><span><strong>{citizen.nom ?? citizen.email}</strong><small>{citizen.email} · {t(citizen.status)}</small></span><button className={`button small ${citizen.status === 'ACTIVE' ? 'danger' : 'primary'}`} type="button" onClick={() => { const nextStatus = citizen.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'; askForConfirmation(nextStatus === 'INACTIVE' ? 'Désactiver ce compte citoyen ?' : 'Réactiver ce compte citoyen ?', nextStatus === 'INACTIVE' ? 'Le citoyen ne pourra plus se connecter et ses sessions ouvertes seront fermées.' : 'Le citoyen pourra à nouveau se connecter à la plateforme.', () => updateCitizenStatus(citizen.id, nextStatus), nextStatus === 'INACTIVE'); }}>{t(citizen.status === 'ACTIVE' ? 'Désactiver' : 'Réactiver')}</button></article>)}</div> : <p className="muted">{t('Aucun utilisateur.')}</p>)}
+      {section === 'admins' && isSuperAdmin && <form className="admin-create-form admin-create-form-settings" onSubmit={(event) => { event.preventDefault(); askForConfirmation('Confirmer la création du compte administrateur ?', 'Un nouveau compte avec des droits administrateur sera créé.', createAdmin); }}><small>{t('Cette action est réservée aux super-administrateurs.')}</small><input placeholder={t('Nom')} value={adminForm.nom} onChange={(event) => setAdminForm({ ...adminForm, nom: event.target.value })} /><input type="email" placeholder={t('Email')} required value={adminForm.email} onChange={(event) => setAdminForm({ ...adminForm, email: event.target.value })} /><input placeholder={t('Téléphone')} value={adminForm.phone} onChange={(event) => setAdminForm({ ...adminForm, phone: event.target.value })} /><input type="password" placeholder={t('Mot de passe (8 caractères minimum)')} minLength={8} required value={adminForm.password} onChange={(event) => setAdminForm({ ...adminForm, password: event.target.value })} /><button className="button primary" type="submit">{t('Créer le compte')}</button></form>}
+      </div>
+    </>}
+  </section>{confirmationDialog}<Toast toast={toast} /></>;
 }
 
 export function AdminDocumentTemplatesPage() {
@@ -188,7 +301,7 @@ export function AdminDocumentTemplatesPage() {
       <button className="button primary" onClick={() => void save()} disabled={!name.trim() || !file}>{t('Enregistrer le modèle')}</button>
     </div>
     <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
-      <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('Rechercher un modèle par son nom')} style={{ padding: 10 }} />
+      <input className="search-input" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('Rechercher un modèle par son nom')} style={{ padding: 10 }} />
       {isLoading ? <p>{t('Chargement...')}</p> : uniqueTemplates.filter((template) => template.name.toLowerCase().includes(search.toLowerCase())).map((template) => (
         <article className="recent-row" key={template.id}>
           <FileText size={18} />
@@ -330,20 +443,39 @@ export function AdminAppointmentsPage() {
     queryFn: appointmentService.listSlotsForAdmin,
     refetchInterval: 10000,
   });
+  const { data: availability = [] } = useQuery<Array<{
+    id: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    slotDurationMinutes: number;
+    breakStart: string | null;
+    breakEnd: string | null;
+    office: string;
+  }>>({
+    queryKey: ['admin-appointment-availability'],
+    queryFn: appointmentService.listAvailabilityForAdmin,
+    refetchInterval: 10000,
+  });
   const [slotDate, setSlotDate] = useState('');
   const [slotStart, setSlotStart] = useState('');
-  const [slotEnd, setSlotEnd] = useState('');
+  const [slotEnd, setSlotEnd] = useState('17:00');
+  const [slotDuration, setSlotDuration] = useState('60');
+  const [breakStart, setBreakStart] = useState('12:00');
+  const [breakEnd, setBreakEnd] = useState('14:00');
   const [slotOffice, setSlotOffice] = useState('Guichet général');
   const createSlot = useMutation({
-    mutationFn: () => appointmentService.createSlot({
-      startsAt: new Date(`${slotDate}T${slotStart}`).toISOString(),
-      endsAt: new Date(`${slotDate}T${slotEnd}`).toISOString(),
+    mutationFn: () => appointmentService.createAvailability({
+      date: slotDate,
+      startTime: slotStart,
+      endTime: slotEnd,
+      slotDurationMinutes: Number(slotDuration),
+      ...(breakStart && breakEnd ? { breakStart, breakEnd } : {}),
       office: slotOffice,
     }),
     onSuccess: () => {
-      setSlotStart('');
-      setSlotEnd('');
       void client.invalidateQueries({ queryKey: ['admin-appointment-slots'] });
+      void client.invalidateQueries({ queryKey: ['admin-appointment-availability'] });
       void client.invalidateQueries({ queryKey: ['appointments', 'available'] });
     },
   });
@@ -351,6 +483,7 @@ export function AdminAppointmentsPage() {
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => appointmentService.updateSlot(id, isActive),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ['admin-appointment-slots'] });
+      void client.invalidateQueries({ queryKey: ['admin-appointment-availability'] });
       void client.invalidateQueries({ queryKey: ['appointments', 'available'] });
     },
   });
@@ -365,7 +498,9 @@ export function AdminAppointmentsPage() {
     await client.invalidateQueries({ queryKey: ['appointments', 'available'] });
   };
   const submitSlot = () => {
-    if (!slotDate || !slotStart || !slotEnd || new Date(`${slotDate}T${slotEnd}`) <= new Date(`${slotDate}T${slotStart}`)) return;
+    if (!slotDate || !slotStart || !slotEnd || Number(slotDuration) < 1 ||
+        Boolean(breakStart) !== Boolean(breakEnd) ||
+        new Date(`${slotDate}T${slotEnd}`) <= new Date(`${slotDate}T${slotStart}`)) return;
     createSlot.mutate();
   };
   return <section className="panel" style={{ padding: 24 }}>
@@ -374,22 +509,34 @@ export function AdminAppointmentsPage() {
     <p>{t('Confirmez, refusez ou clôturez les rendez-vous pris par les citoyens.')}</p>
     <section className="request-form-section" style={{ marginTop: 20 }}>
       <h2>{t('Configurer les créneaux disponibles')}</h2>
-      <p>{t('Ajoutez manuellement les dates et heures que les citoyens pourront réserver.')}</p>
+      <p>{t('Les créneaux sont générés automatiquement. Toute pause est exclue, même si elle chevauche une partie d’un créneau.')}</p>
       <div className="request-form-grid">
         <label className="request-field">{t('Date du créneau')}<input type="date" value={slotDate} onChange={(event) => setSlotDate(event.target.value)} /></label>
         <label className="request-field">{t('Heure de début')}<input type="time" value={slotStart} onChange={(event) => setSlotStart(event.target.value)} /></label>
         <label className="request-field">{t('Heure de fin')}<input type="time" value={slotEnd} onChange={(event) => setSlotEnd(event.target.value)} /></label>
+        <label className="request-field">{t('Durée d’un créneau (minutes)')}<input type="number" min={1} max={1440} step={1} value={slotDuration} onChange={(event) => setSlotDuration(event.target.value)} /></label>
+        <label className="request-field">{t('Début de la pause (facultatif)')}<input type="time" value={breakStart} onChange={(event) => setBreakStart(event.target.value)} /></label>
+        <label className="request-field">{t('Fin de la pause (facultatif)')}<input type="time" value={breakEnd} onChange={(event) => setBreakEnd(event.target.value)} /></label>
         <label className="request-field">{t('Guichet ou service')}<input value={slotOffice} maxLength={120} onChange={(event) => setSlotOffice(event.target.value)} /></label>
       </div>
-      <button className="button primary" disabled={!slotDate || !slotStart || !slotEnd || slotEnd <= slotStart || createSlot.isPending} onClick={submitSlot}>
-        {t(createSlot.isPending ? 'Enregistrement...' : 'Ajouter ce créneau')}
+      <button className="button primary" disabled={!slotDate || !slotStart || !slotEnd || Number(slotDuration) < 1 || Boolean(breakStart) !== Boolean(breakEnd) || slotEnd <= slotStart || createSlot.isPending} onClick={submitSlot}>
+        {t(createSlot.isPending ? 'Enregistrement...' : 'Générer les créneaux')}
       </button>
       {slotErrorMessage && <p className="error-message">{t(slotErrorMessage)}</p>}
+      <h3>{t('Horaires configurés')}</h3>
+      {availability.length === 0 ? <p>{t('Aucun horaire configuré.')}</p> : <div style={{ display: 'grid', gap: 8 }}>
+        {availability.map((day) => <div className="recent-row" key={day.id}>
+          <CalendarDays size={18} />
+          <span><strong>{new Date(`${day.date.slice(0, 10)}T00:00:00.000Z`).toLocaleDateString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })} · {day.startTime}–{day.endTime}</strong>
+            <small>{day.slotDurationMinutes} {t('min')} · {day.breakStart && day.breakEnd ? `${t('Pause')} ${day.breakStart}–${day.breakEnd}` : t('Sans pause')} · {day.office}</small>
+          </span>
+        </div>)}
+      </div>}
       <h3>{t('Créneaux configurés')}</h3>
       {slotsLoading ? <p>{t('Chargement...')}</p> : slots.length === 0 ? <p>{t('Aucun créneau configuré.')}</p> : <div style={{ display: 'grid', gap: 8 }}>
         {slots.map((slot) => <div className="recent-row" key={slot.id}>
           <CalendarDays size={18} />
-          <span><strong>{new Date(slot.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR')} – {new Date(slot.endsAt).toLocaleTimeString(language === 'mg' ? 'mg-MG' : 'fr-FR', { hour: '2-digit', minute: '2-digit' })}</strong>
+          <span><strong>{new Date(slot.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })} – {new Date(slot.endsAt).toLocaleTimeString(language === 'mg' ? 'mg-MG' : 'fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Indian/Antananarivo' })}</strong>
             <small>{slot.office} · {slot.appointments.length ? t('Réservé') : slot.isActive ? t('Disponible') : t('Désactivé')}</small>
           </span>
           <button className={`button small ${slot.isActive ? 'appointment-reject' : ''}`} disabled={updateSlot.isPending || (slot.startsAt <= new Date().toISOString() && !slot.isActive)} onClick={() => updateSlot.mutate({ id: slot.id, isActive: !slot.isActive })}>
@@ -399,6 +546,9 @@ export function AdminAppointmentsPage() {
       </div>}
     </section>
     <h2>{t('Rendez-vous réservés')}</h2>
-    {isLoading ? <p>{t('Chargement...')}</p> : appointments.length === 0 ? <div className="empty-state"><CalendarDays size={28} /><span>{t('Aucun rendez-vous enregistré.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{appointments.map((appointment: { id: string; startsAt: string; office: string; status: string; user?: { nom?: string | null; email: string } }) => <div className="recent-row" key={appointment.id}><CalendarDays size={18} /><span><strong>{new Date(appointment.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR')}</strong><small>{appointment.user?.nom ?? appointment.user?.email} · {t(appointment.office)} · {t(appointment.status)}</small></span>{appointment.status === 'PENDING' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small primary" onClick={() => void update(appointment.id, 'BOOKED')}>{t('Confirmer')}</button><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button></span>}{appointment.status === 'BOOKED' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button><button className="button small appointment-complete" onClick={() => void update(appointment.id, 'COMPLETED')}>{t('Terminer')}</button></span>}</div>)}</div>}
+    {isLoading ? <p>{t('Chargement...')}</p> : appointments.length === 0 ? <div className="empty-state"><CalendarDays size={28} /><span>{t('Aucun rendez-vous enregistré.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{appointments.map((appointment: { id: string; startsAt: string; endsAt: string; office: string; status: string; user?: { nom?: string | null; email: string }; request?: { type: string; title: string | null } | null }) => {
+      const isFingerprintAppointment = appointment.request && ['CIN_REQUEST', 'CIN_RENEWAL'].includes(appointment.request.type);
+      return <div className="recent-row" key={appointment.id}><CalendarDays size={18} /><span><strong>{new Date(appointment.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })}</strong><small>{appointment.user?.nom ?? appointment.user?.email} · {t(appointment.office)} · {t(appointment.status)}{isFingerprintAppointment ? ` · ${t('Empreintes digitales — ')}${appointment.request?.title ?? t(appointment.request?.type ?? '')}` : ''}</small></span>{appointment.status === 'PENDING' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small primary" onClick={() => void update(appointment.id, 'BOOKED')}>{t('Confirmer')}</button><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button></span>}{appointment.status === 'BOOKED' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button><button className="button small appointment-complete" disabled={new Date(appointment.endsAt) > new Date()} onClick={() => void update(appointment.id, 'COMPLETED')}>{t(isFingerprintAppointment ? 'Empreintes prises / remis au guichet' : 'Terminer')}</button></span>}</div>;
+    })}</div>}
   </section>;
 }
