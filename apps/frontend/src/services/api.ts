@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { ChatConversation, CitizenRequest, Document, PaginatedDocuments, PrefectureService, RagResponse, RequestRequirements, SearchHit, RequestType } from '../types';
+import type { ChatConversation, CitizenComplaint, CitizenRequest, Document, NotificationItem, PaginatedDocuments, PrefectureService, RagResponse, RequestRequirements, SearchHit, RequestType } from '../types';
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:3000' });
 api.interceptors.request.use((config) => {
@@ -16,9 +16,15 @@ api.interceptors.response.use((response) => response, (error: unknown) => {
   return Promise.reject(error);
 });
 export const authService = {
-  register: async (payload: { email: string; password: string; phone?: string; cin?: string; nom?: string; isAdult: boolean }) =>
+  register: async (payload: { email?: string; password: string; phone?: string; cin?: string; nom?: string; isAdult: boolean }) =>
     (await api.post<{ token: string; user?: unknown }>('/auth/register', payload)).data,
   login: async (identifier: string, password: string) => (await api.post<{ token: string; user?: unknown }>('/auth/login', { identifier, password })).data,
+  requestReactivation: async (payload: { identifier: string; password: string; reason?: string }) =>
+    (await api.post<{ success: boolean; message: string }>('/auth/request-reactivation', payload)).data,
+  requestPasswordReset: async (email: string) =>
+    (await api.post<{ success: boolean; message: string }>('/auth/password-reset/request', { email })).data,
+  resetPassword: async (payload: { email: string; code: string; password: string }) =>
+    (await api.post<{ success: boolean; message: string }>('/auth/password-reset/confirm', payload)).data,
   validate: async (token: string) => (await api.post('/auth/validate', {}, { headers: { Authorization: `Bearer ${token}` } })).data,
   logout: async (token: string | null) => { if (token) await api.post('/auth/logout', {}, { headers: { Authorization: `Bearer ${token}` } }); },
   changePassword: async (currentPassword: string, newPassword: string) =>
@@ -71,12 +77,34 @@ export const prefectureService = {
   downloadAttachment: async (requestId: string, attachmentId: string) =>
     (await api.get<Blob>(`/requests/${requestId}/attachments/${attachmentId}`, { responseType: 'blob' })).data,
   downloadPdf: async (requestId: string) => (await api.get<Blob>(`/requests/${requestId}/pdf`, { responseType: 'blob' })).data,
+  downloadCorrectedPdf: async (requestId: string) => (await api.get<Blob>(`/requests/${requestId}/pdf`, { responseType: 'blob' })).data,
   stats: async () => (await api.get<{ total: number; inProgress: number; approved: number; rejected: number }>('/requests/stats')).data,
 };
 
 export const notificationService = {
-  list: async () => (await api.get('/notifications')).data,
+  list: async () => (await api.get<NotificationItem[]>('/notifications')).data,
   markAsRead: async (id: string) => (await api.patch(`/notifications/${id}/read`)).data,
+};
+
+export const complaintService = {
+  eligibleDocuments: async () => (await api.get<Array<{ id: string; title: string | null; type: string; updatedAt: string; service: { nameFr: string; nameMg: string } }>>('/complaints/documents')).data,
+  list: async () => (await api.get<CitizenComplaint[]>('/complaints')).data,
+  create: async (payload: { documentRequestId: string; reason: string; details?: string; file: File }) => {
+    const form = new FormData();
+    form.append('documentRequestId', payload.documentRequestId);
+    form.append('reason', payload.reason);
+    if (payload.details) form.append('details', payload.details);
+    form.append('file', payload.file);
+    return (await api.post('/complaints', form)).data;
+  },
+  listAdmin: async () => (await api.get<CitizenComplaint[]>('/complaints/admin')).data,
+  markInReview: async (id: string) => (await api.patch(`/complaints/${id}/review`)).data,
+  resolve: async (id: string, corrections: Record<string, string>, response: string) =>
+    (await api.post(`/complaints/${id}/resolve`, { corrections, response })).data,
+  reject: async (id: string, response: string) =>
+    (await api.post(`/complaints/${id}/reject`, { response })).data,
+  downloadAttachment: async (id: string, attachmentId: string) =>
+    (await api.get<Blob>(`/complaints/${id}/attachments/${attachmentId}`, { responseType: 'blob' })).data,
 };
 
 export const appointmentService = {
@@ -95,9 +123,12 @@ export const appointmentService = {
 };
 
 export const userService = {
-  list: async () => (await api.get<Array<{ id: string; email: string; nom: string | null; role: string; status: string; createdAt: string; roles?: Array<{ role: { name: string } }> }>>('/users')).data,
-  updateCitizenStatus: async (id: string, status: 'ACTIVE' | 'INACTIVE') =>
-    (await api.patch<{ id: string; email: string; nom: string | null; role: string; status: string }>(`/users/${id}/status`, { status })).data,
+  list: async () => (await api.get<Array<{ id: string; email: string | null; nom: string | null; phone: string | null; role: string; status: string; createdAt: string; roles?: Array<{ role: { name: string } }> }>>('/users')).data,
+  updateCitizenStatus: async (id: string, status: 'ACTIVE' | 'DISABLED') =>
+    (await api.patch<{ id: string; email: string | null; nom: string | null; role: string; status: string }>(`/users/${id}/status`, { status })).data,
+  reactivationRequests: async () => (await api.get<Array<{ id: string; reason: string | null; status: string; createdAt: string; user: { id: string; nom: string | null; email: string | null; phone: string | null; status: string } }>>('/users/reactivations')).data,
+  decideReactivation: async (id: string, decision: 'APPROVED' | 'REJECTED') =>
+    (await api.post(`/users/reactivations/${id}/decision`, { decision })).data,
 };
 
 export const adminService = {

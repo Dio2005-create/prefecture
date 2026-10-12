@@ -65,6 +65,33 @@ export interface CitizenRequest {
   attachments?: Array<{ id: string; label?: string; originalName: string; mimeType?: string; size?: number; createdAt: string }>;
 }
 
+export interface NotificationItem {
+  id: string;
+  title: string;
+  message: string;
+  status: string;
+  createdAt: string;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface CitizenComplaint {
+  id: string;
+  reason: string;
+  details?: string | null;
+  status: 'PENDING' | 'IN_REVIEW' | 'RESOLVED' | 'REJECTED';
+  adminResponse?: string | null;
+  createdAt: string;
+  documentRequest: {
+    id: string;
+    title: string | null;
+    type: string;
+    service: { nameFr: string; nameMg?: string };
+    formData?: Record<string, unknown> | null;
+  };
+  attachments: Array<{ id: string; originalName: string; mimeType?: string | null; size?: number | null; createdAt?: string }>;
+  user?: { id: string; nom: string | null; email: string | null; phone?: string | null };
+}
+
 export interface RequestAttachmentRequirement {
   key: string;
   label: string;

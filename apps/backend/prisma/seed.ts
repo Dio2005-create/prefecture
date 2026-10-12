@@ -83,9 +83,9 @@ async function seedServices() {
     },
     {
       code: 'RECLAMATION',
-      nameFr: 'Signalement ou réclamation',
+      nameFr: 'Réclamation citoyenne',
       nameMg: 'Fampandrenesana na fitarainana',
-      description: 'Signalement d’une situation ou réclamation administrative',
+      description: 'Réclamation concernant une erreur sur un document administratif déjà délivré',
     },
   ];
 

@@ -81,8 +81,8 @@ export class UsersService {
     });
   }
 
-  async updateCitizenStatus(userId: string, status: 'ACTIVE' | 'INACTIVE') {
-    if (status !== 'ACTIVE' && status !== 'INACTIVE') {
+  async updateCitizenStatus(userId: string, status: 'ACTIVE' | 'DISABLED') {
+    if (status !== 'ACTIVE' && status !== 'DISABLED') {
       throw new BadRequestException('Statut de compte invalide');
     }
 
@@ -92,21 +92,34 @@ export class UsersService {
       throw new BadRequestException('Seuls les comptes citoyens peuvent être désactivés depuis cette section');
     }
     if (user.status === status) {
-      throw new BadRequestException(status === 'INACTIVE' ? 'Ce compte est déjà désactivé' : 'Ce compte est déjà actif');
+      throw new BadRequestException(status === 'DISABLED' ? 'Ce compte est déjà désactivé' : 'Ce compte est déjà actif');
     }
-    if (status === 'INACTIVE') this.mailer.assertConfigured();
+    if (status === 'DISABLED' && user.email) this.mailer.assertConfigured();
 
-    const updatedUser = await this.prisma.user.update({
-      where: { id: userId },
-      data: { status },
-      select: { id: true, email: true, nom: true, role: true, status: true },
+    const updatedUser = await this.prisma.$transaction(async (transaction) => {
+      const updated = await transaction.user.update({
+        where: { id: userId },
+        data: { status },
+        select: { id: true, email: true, nom: true, role: true, status: true },
+      });
+      if (status === 'ACTIVE' && user.status === 'REACTIVATION_REQUESTED') {
+        await transaction.accountReactivationRequest.updateMany({
+          where: { userId, status: 'PENDING' },
+          data: { status: 'APPROVED' },
+        });
+      }
+      return updated;
     });
-    if (status === 'INACTIVE') {
+    if (status === 'DISABLED') {
       try {
-        await this.mailer.sendCitizenDeactivation(user.email, user.locale);
+        if (user.email) await this.mailer.sendCitizenDeactivation(user.email, user.locale);
       } catch (error) {
         try {
-          await this.prisma.user.update({ where: { id: userId }, data: { status: user.status } });
+          const rollback = await this.prisma.user.updateMany({
+            where: { id: userId, status: 'DISABLED' },
+            data: { status: user.status },
+          });
+          if (rollback.count !== 1) throw new Error('Le statut du compte a changé avant la restauration.');
         } catch (rollbackError) {
           this.logger.error(
             `Failed to restore account status after deactivation email failure for ${userId}`,
@@ -119,5 +132,68 @@ export class UsersService {
       this.auth.revokeUserSessions(userId);
     }
     return updatedUser;
+  }
+
+  listReactivationRequests() {
+    return this.prisma.accountReactivationRequest.findMany({
+      where: { status: 'PENDING' },
+      orderBy: { createdAt: 'asc' },
+      include: { user: { select: { id: true, nom: true, email: true, phone: true, status: true } } },
+    });
+  }
+
+  async decideReactivation(requestId: string, reviewerId: string, decision: 'APPROVED' | 'REJECTED') {
+    const request = await this.prisma.accountReactivationRequest.findUnique({
+      where: { id: requestId },
+      include: { user: true },
+    });
+    if (!request || request.status !== 'PENDING' || request.user.status !== 'REACTIVATION_REQUESTED') {
+      throw new NotFoundException('Demande de réactivation introuvable ou déjà traitée');
+    }
+    if (request.user.email) this.mailer.assertConfigured();
+    const nextStatus = decision === 'APPROVED' ? 'ACTIVE' : 'DISABLED';
+    await this.prisma.$transaction(async (transaction) => {
+      const updateRequest = await transaction.accountReactivationRequest.updateMany({
+        where: { id: request.id, status: 'PENDING' },
+        data: { status: decision, reviewedById: reviewerId },
+      });
+      const updateUser = await transaction.user.updateMany({
+        where: { id: request.userId, status: 'REACTIVATION_REQUESTED' },
+        data: { status: nextStatus },
+      });
+      if (updateRequest.count !== 1 || updateUser.count !== 1) {
+        throw new BadRequestException('Cette demande vient d’être traitée. Actualisez la liste.');
+      }
+    });
+    if (request.user.email) {
+      try {
+        await this.mailer.sendReactivationDecision(request.user.email, decision === 'APPROVED', request.user.locale);
+      } catch (error) {
+        try {
+          await this.prisma.$transaction(async (transaction) => {
+            const userRollback = await transaction.user.updateMany({
+              where: { id: request.userId, status: nextStatus },
+              data: { status: 'REACTIVATION_REQUESTED' },
+            });
+            const requestRollback = await transaction.accountReactivationRequest.updateMany({
+              where: { id: request.id, status: decision },
+              data: { status: 'PENDING', reviewedById: null },
+            });
+            if (userRollback.count !== 1 || requestRollback.count !== 1) {
+              throw new Error('Le statut de la demande ou du compte a changé avant la restauration.');
+            }
+          });
+        } catch (rollbackError) {
+          this.logger.error(
+            `Failed to restore reactivation request after email failure for ${request.id}`,
+            rollbackError instanceof Error ? rollbackError.stack : String(rollbackError),
+          );
+          throw new ServiceUnavailableException('L’e-mail n’a pas pu être envoyé et la décision n’a pas pu être annulée. Vérifiez le compte avant de continuer.');
+        }
+        throw error;
+      }
+    }
+    if (decision === 'APPROVED') this.auth.revokeUserSessions(request.userId);
+    return { success: true, status: nextStatus, emailSent: Boolean(request.user.email) };
   }
 }

@@ -10,7 +10,7 @@ export class AuthController {
     @Body() body: { email?: string; password?: string; phone?: string; cin?: string; nom?: string; isAdult?: boolean },
   ) {
     return this.auth.register({
-      email: body.email ?? '',
+      email: body.email,
       password: body.password ?? '',
       phone: body.phone,
       cin: body.cin,
@@ -22,6 +22,21 @@ export class AuthController {
   @Post('login')
   login(@Body() body: { identifier?: string; password?: string }) {
     return this.auth.login(body.identifier ?? '', body.password ?? '');
+  }
+
+  @Post('request-reactivation')
+  requestReactivation(@Body() body: { identifier?: string; password?: string; reason?: string }) {
+    return this.auth.requestReactivation(body.identifier ?? '', body.password ?? '', body.reason);
+  }
+
+  @Post('password-reset/request')
+  requestPasswordReset(@Body() body: { email?: string }) {
+    return this.auth.requestPasswordReset(body.email ?? '');
+  }
+
+  @Post('password-reset/confirm')
+  resetPassword(@Body() body: { email?: string; code?: string; password?: string }) {
+    return this.auth.resetPassword(body.email ?? '', body.code ?? '', body.password ?? '');
   }
 
   @Post('logout')

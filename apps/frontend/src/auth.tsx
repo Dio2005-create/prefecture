@@ -9,11 +9,11 @@ const TIMEOUT = 5 * 60 * 1000;
 
 export type AuthUser = {
   id: string;
-  email: string;
+  email: string | null;
   nom: string | null;
   phone?: string | null;
   cin?: string | null;
-  role: 'CITIZEN' | 'ADMIN';
+  role: 'CITIZEN' | 'ADMIN' | 'SUPERADMIN';
   roles: string[];
 };
 
@@ -22,7 +22,7 @@ type AuthContextValue = {
   restoringSession: boolean;
   user: AuthUser | null;
   login: (username: string, password: string) => Promise<AuthUser | null>;
-  register: (payload: { email: string; password: string; phone?: string; cin?: string; nom?: string; isAdult: boolean }) => Promise<AuthUser | null>;
+  register: (payload: { email?: string; password: string; phone?: string; cin?: string; nom?: string; isAdult: boolean }) => Promise<AuthUser | null>;
   logout: () => Promise<void>;
   updateUser: (user: AuthUser) => void;
 };
@@ -95,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw error;
     }
   };
-  const register = async (payload: { email: string; password: string; phone?: string; cin?: string; nom?: string; isAdult: boolean }) => {
+  const register = async (payload: { email?: string; password: string; phone?: string; cin?: string; nom?: string; isAdult: boolean }) => {
     try {
       const session = await authService.register(payload);
       localStorage.setItem(SESSION_KEY, session.token);
@@ -104,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(authenticatedUser);
       setAuthenticated(true);
       return authenticatedUser;
-    } catch { return null; }
+    } catch (error) { throw error; }
   };
   const logout = async () => { const token = localStorage.getItem(SESSION_KEY); try { await authService.logout(token); } finally { localStorage.removeItem(SESSION_KEY); localStorage.removeItem(ACTIVITY_KEY); setAuthenticated(false); setUser(null); } };
   const updateUser = (updatedUser: AuthUser) => setUser(updatedUser);
@@ -129,7 +129,7 @@ export function RequireRoles({ roles, children }: { roles: string[]; children: R
   const location = useLocation();
   if (restoringSession) return <LoadingPage />;
   if (!authenticated) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
-  if (!user || !roles.some((role) => user.roles.includes(role) || (role === 'ADMIN' && user.role === 'ADMIN'))) {
+  if (!user || !roles.some((role) => user.roles.includes(role) || (role === 'ADMIN' && (user.role === 'ADMIN' || user.roles.includes('SUPERADMIN'))))) {
     return <Navigate to="/front/accueil" replace />;
   }
   return children;

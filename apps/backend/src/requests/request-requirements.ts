@@ -70,7 +70,7 @@ export const requestRequirements: Record<RequestType, RequestRequirements> = {
     attachments: [required('document-original', 'Document original à légaliser'), ...cinPair('cin-signataire', 'CIN du signataire')],
   },
   COMPLAINT: {
-    fields: [field('nom', 'Nom et prénoms'), field('cin', 'Numéro CIN'), field('adresse', 'Adresse', 'textarea'), field('telephone', 'Téléphone'), field('objet', 'Objet du signalement / réclamation'), field('description', 'Description détaillée', 'textarea')],
+    fields: [field('nom', 'Nom et prénoms'), field('cin', 'Numéro CIN'), field('adresse', 'Adresse', 'textarea'), field('telephone', 'Téléphone'), field('objet', 'Motif de la réclamation'), field('description', 'Description détaillée', 'textarea')],
     attachments: [optional('justificatif', 'Photos ou documents justificatifs', { multiple: true })],
   },
   SPECIAL_REQUEST: {

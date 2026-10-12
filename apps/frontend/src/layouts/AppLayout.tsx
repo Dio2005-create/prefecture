@@ -1,10 +1,12 @@
-import { useState, type ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, Bell, Bot, CalendarDays, FileText, LayoutDashboard, Menu, Search, ShieldCheck, X, UserRound, BriefcaseBusiness, CheckSquare, LogOut, Settings, KeyRound, Languages, Moon, Sun } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { useAuth, type AuthUser } from '../auth';
 import { usePreferences } from '../preferences';
 import { notificationService } from '../services/api';
+import type { NotificationItem } from '../types';
 
 type AppLayoutVariant = 'frontoffice' | 'backoffice';
 
@@ -14,13 +16,15 @@ const citizenNavigation = [
   { to: '/front/documents', label: 'Mes documents', labelMg: 'Ny taratasiko', icon: FileText },
   { to: '/front/informations', label: 'Textes officiels', labelMg: 'Lalàna ofisialy', icon: FileText },
   { to: '/front/rendez-vous', label: 'Rendez-vous', labelMg: 'Fotoana', icon: CalendarDays },
-  { to: '/front/signalements', label: 'Signalements', labelMg: 'Fitarainana', icon: ShieldCheck },
+  { to: '/front/reclamations', label: 'Réclamations', labelMg: 'Fitarainana', icon: ShieldCheck },
   { to: '/front/assistant', label: 'Assistant IA', labelMg: 'Mpanampy IA', icon: Bot },
 ];
 
 const agentNavigation = [
   { to: '/back/accueil', label: 'Tableau de bord', labelMg: 'Tabilao', icon: LayoutDashboard },
   { to: '/back/workflow', label: 'File des dossiers', labelMg: 'Filaharan’ny dosie', icon: CheckSquare },
+  { to: '/back/reclamations', label: 'Réclamations citoyennes', labelMg: 'Fitarainana', icon: ShieldCheck },
+  { to: '/back/notifications', label: 'Notifications', labelMg: 'Fampandrenesana', icon: Bell },
   { to: '/back/modeles', label: 'Modèles de documents', labelMg: 'Modelin-taratasy', icon: FileText },
   { to: '/back/cachets', label: 'Cachets & signatures', labelMg: 'Tombokase sy sonia', icon: ShieldCheck },
   { to: '/back/documents', label: 'Archives', labelMg: 'Tahiry', icon: FileText },
@@ -34,7 +38,7 @@ const adminNavigation = [...agentNavigation, { to: '/back/pilotage', label: 'KPI
 
 function getNavigation(variant: AppLayoutVariant, user: AuthUser | null) {
   if (variant === 'frontoffice') return citizenNavigation;
-  return user?.role === 'ADMIN' || user?.roles.includes('ADMIN') ? adminNavigation : [];
+  return user?.role === 'ADMIN' || user?.roles.includes('ADMIN') || user?.roles.includes('SUPERADMIN') ? adminNavigation : [];
 }
 
 function getProfileName(user: AuthUser | null, variant: AppLayoutVariant, language: 'fr' | 'mg') {
@@ -42,15 +46,25 @@ function getProfileName(user: AuthUser | null, variant: AppLayoutVariant, langua
   return language === 'mg' ? 'Mpandrindra' : 'Administrateur';
 }
 
-function NavigationPreferences({ showNotifications }: { showNotifications: boolean }) {
+function NavigationPreferences({ showNotifications, showAdminNotifications = false }: { showNotifications: boolean; showAdminNotifications?: boolean }) {
   const { language, setLanguage, theme, toggleTheme, t } = usePreferences();
+  const { pathname } = useLocation();
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const queryClient = useQueryClient();
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications'],
     queryFn: notificationService.list,
-    enabled: showNotifications,
-    refetchInterval: showNotifications ? 30000 : false,
+    enabled: showNotifications || showAdminNotifications,
+    refetchInterval: showNotifications || showAdminNotifications ? 30000 : false,
   });
-  const unreadCount = notifications.filter((notification: { status: string }) => notification.status !== 'READ').length;
+  const unreadCount = notifications.filter((notification: NotificationItem) => notification.status !== 'READ').length;
+  useEffect(() => {
+    setNotificationsOpen(false);
+  }, [pathname]);
+  const markRead = async (id: string) => {
+    await notificationService.markAsRead(id);
+    await queryClient.invalidateQueries({ queryKey: ['notifications'] });
+  };
   return <div className="nav-preferences">
     <span className="nav-preferences-label"><Languages size={15} /></span>
     <div className="language-switch" role="group" aria-label="Langue / Fiteny">
@@ -64,6 +78,19 @@ function NavigationPreferences({ showNotifications }: { showNotifications: boole
       <Bell size={17} />
       {unreadCount > 0 && <span className="notification-nav-count">{unreadCount > 99 ? '99+' : unreadCount}</span>}
     </NavLink>}
+    {showAdminNotifications && <div className="admin-notification-control">
+      <button className="icon-button notification-nav-button" type="button" aria-expanded={notificationsOpen} aria-label={t('Notifications non lues : {{count}}', { count: unreadCount })} title={t('Notifications')} onClick={() => setNotificationsOpen((open) => !open)}>
+        <Bell size={17} />
+        {unreadCount > 0 && <span className="notification-nav-count">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+      </button>
+      {notificationsOpen && <section className="admin-notification-popover" aria-label={t('Notifications')}>
+        <div className="admin-notification-heading"><strong>{t('Notifications')}</strong><NavLink to="/back/notifications" onClick={() => setNotificationsOpen(false)}>{t('Tout voir')}</NavLink></div>
+        {notifications.length === 0 ? <p className="muted">{t('Aucune notification.')}</p> : notifications.slice(0, 6).map((notification: NotificationItem) => <article key={notification.id} className={notification.status === 'READ' ? 'admin-notification-read' : ''}>
+          <span><strong>{t(notification.title)}</strong><small>{t(notification.message)}</small></span>
+          {notification.status !== 'READ' && <button type="button" className="text-link" onClick={() => void markRead(notification.id)}>{t('Marquer lue')}</button>}
+        </article>)}
+      </section>}
+    </div>}
   </div>;
 }
 
@@ -71,6 +98,10 @@ export function AppLayout({ children, variant }: { children: ReactNode; variant:
   const [open, setOpen] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileMenuPosition, setProfileMenuPosition] = useState({ top: 8, right: 8 });
+  const profileTriggerRef = useRef<HTMLButtonElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const { pathname } = useLocation();
   const { logout, user } = useAuth();
   const { language, t } = usePreferences();
   const navigation = getNavigation(variant, user);
@@ -78,17 +109,71 @@ export function AppLayout({ children, variant }: { children: ReactNode; variant:
     ? t('Back-Office préfecture')
     : '';
   const profileName = getProfileName(user, variant, language);
+  useEffect(() => {
+    setProfileMenuOpen(false);
+    setOpen(false);
+  }, [pathname]);
+  useLayoutEffect(() => {
+    if (!profileMenuOpen) return;
+    const positionMenu = () => {
+      const trigger = profileTriggerRef.current;
+      const menu = profileMenuRef.current;
+      if (!trigger || !menu) return;
+      const triggerRect = trigger.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      const margin = 8;
+      const right = Math.max(margin, Math.min(window.innerWidth - triggerRect.right, window.innerWidth - menuRect.width - margin));
+      const topAbove = triggerRect.top - menuRect.height - margin;
+      const top = topAbove >= margin
+        ? topAbove
+        : Math.max(margin, Math.min(triggerRect.bottom + margin, window.innerHeight - menuRect.height - margin));
+      setProfileMenuPosition({ top, right });
+    };
+    positionMenu();
+    window.addEventListener('resize', positionMenu);
+    window.addEventListener('scroll', positionMenu, true);
+    return () => {
+      window.removeEventListener('resize', positionMenu);
+      window.removeEventListener('scroll', positionMenu, true);
+    };
+  }, [profileMenuOpen]);
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!profileTriggerRef.current?.contains(target) && !profileMenuRef.current?.contains(target)) {
+        setProfileMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setProfileMenuOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [profileMenuOpen]);
+  const sidebar = <aside className={open ? 'sidebar is-open' : 'sidebar'}>
+    <div className="brand"><span className="brand-mark"><Archive size={20} /></span><span>ARCHIVIA<small>{t('fonds préfectoral')}</small></span><button className="icon-button close-nav" onClick={() => setOpen(false)} aria-label={t('Fermer')}><X size={18} /></button></div>
+    {title && <p className="nav-caption">{title}</p>}
+    <nav>{navigation.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} end={to === navigation[0].to} onClick={() => { setOpen(false); setProfileMenuOpen(false); }}><Icon size={17} />{t(label)}</NavLink>)}</nav>
+    <div className="sidebar-foot"><ShieldCheck size={16} /><span>{t('Environnement local')}<small>{t('Traitement confidentiel')}</small></span></div>
+  </aside>;
+  const profilePath = variant === 'frontoffice' ? '/front/profil' : '/back/profil';
+  const passwordPath = variant === 'frontoffice' ? '/front/parametres' : '/back/mot-de-passe';
+  const topbar = <header className="topbar"><button className="icon-button menu-button" onClick={() => setOpen(true)} aria-label={t('Ouvrir le menu')}><Menu size={20} /></button><NavigationPreferences showNotifications={variant === 'frontoffice'} showAdminNotifications={variant === 'backoffice'} /><div className="profile"><span className="avatar">{variant === 'frontoffice' ? <UserRound size={16} /> : <BriefcaseBusiness size={16} />}</span><span><strong>{profileName}</strong><small>{t('Session locale')}</small></span><button ref={profileTriggerRef} className="icon-button profile-menu-trigger" type="button" aria-expanded={profileMenuOpen} aria-label={t('Ouvrir le menu du profil')} onClick={() => setProfileMenuOpen((value) => !value)}><Menu size={18} /></button></div></header>;
 
   return <div className={variant === 'frontoffice' ? 'app-shell frontoffice-shell' : 'app-shell backoffice-shell'}>
-    <aside className={open ? 'sidebar is-open' : 'sidebar'}>
-      <div className="brand"><span className="brand-mark"><Archive size={20} /></span><span>ARCHIVIA<small>{t('fonds préfectoral')}</small></span><button className="icon-button close-nav" onClick={() => setOpen(false)} aria-label={t('Fermer')}><X size={18} /></button></div>
-      {title && <p className="nav-caption">{title}</p>}
-      <nav>{navigation.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} end={to === navigation[0].to} onClick={() => setOpen(false)}><Icon size={17} />{t(label)}</NavLink>)}</nav>
-      {variant === 'frontoffice' && <div className="front-profile-actions"><button className="icon-button profile-menu-trigger" onClick={() => setProfileMenuOpen((value) => !value)} aria-label={t('Ouvrir le menu du profil')}><Menu size={18} /></button>{profileMenuOpen && <div className="profile-menu"><NavLink to="/front/profil" onClick={() => setProfileMenuOpen(false)}><UserRound size={15} /> {t('Modifier le profil')}</NavLink><NavLink to="/front/parametres" onClick={() => setProfileMenuOpen(false)}><KeyRound size={15} /> {t('Changer le mot de passe')}</NavLink><button type="button" onClick={() => { setProfileMenuOpen(false); setConfirmLogout(true); }}><LogOut size={15} /> {t('Déconnexion')}</button></div>}</div>}
-      <div className="sidebar-foot"><ShieldCheck size={16} /><span>{t('Environnement local')}<small>{t('Traitement confidentiel')}</small></span></div>
-    </aside>
+    {variant === 'frontoffice' ? <div className="frontoffice-sticky-header">{sidebar}{topbar}</div> : sidebar}
     {open && <button className="scrim" onClick={() => setOpen(false)} aria-label={t('Fermer le menu')} />}
-    <section className="workspace"><header className="topbar"><button className="icon-button menu-button" onClick={() => setOpen(true)} aria-label={t('Ouvrir le menu')}><Menu size={20} /></button><NavigationPreferences showNotifications={variant === 'frontoffice'} /><div className="profile"><span className="avatar">{variant === 'frontoffice' ? <UserRound size={16} /> : <BriefcaseBusiness size={16} />}</span><span><strong>{profileName}</strong><small>{t('Session locale')}</small></span>{variant === 'backoffice' && <><button className="icon-button profile-menu-trigger" onClick={() => setProfileMenuOpen((value) => !value)} aria-label={t('Ouvrir le menu du profil')}><Menu size={18} /></button>{profileMenuOpen && <div className="profile-menu"><NavLink to="/back/profil" onClick={() => setProfileMenuOpen(false)}><UserRound size={15} /> {t('Modifier le profil')}</NavLink><NavLink to="/back/mot-de-passe" onClick={() => setProfileMenuOpen(false)}><KeyRound size={15} /> {t('Changer le mot de passe')}</NavLink><button type="button" onClick={() => { setProfileMenuOpen(false); setConfirmLogout(true); }}><LogOut size={15} /> {t('Déconnexion')}</button></div>}</>}</div></header><main className="content">{children}</main></section>
+    <section className="workspace">{variant === 'backoffice' && topbar}<main className="content">{children}</main></section>
+    {profileMenuOpen && createPortal(<div ref={profileMenuRef} className="profile-menu profile-menu-portal" style={profileMenuPosition}>
+      <NavLink to={profilePath} onClick={() => setProfileMenuOpen(false)}><UserRound size={15} /> {t('Mon profil')}</NavLink>
+      <NavLink to={passwordPath} onClick={() => setProfileMenuOpen(false)}><KeyRound size={15} /> {t('Changer le mot de passe')}</NavLink>
+      <button type="button" onClick={() => { setProfileMenuOpen(false); setConfirmLogout(true); }}><LogOut size={15} /> {t('Déconnexion')}</button>
+    </div>, document.body)}
     {confirmLogout && <div className="modal-backdrop" role="presentation"><section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="logout-title"><p className="eyebrow">{t('Session sécurisée')}</p><h2 id="logout-title">{t('Confirmer la déconnexion')}</h2><p>{t('Votre session locale sera fermée sur cet appareil.')}</p><div className="modal-actions"><button className="button" onClick={() => setConfirmLogout(false)}>{t('Annuler')}</button><button className="button primary" onClick={() => { setConfirmLogout(false); void logout(); }}>{t('Se déconnecter')}</button></div></section></div>}
   </div>;
 }

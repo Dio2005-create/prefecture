@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Patch, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -28,7 +28,25 @@ export class UsersController {
 
   @Patch(':id/status')
   @Roles('ADMIN')
-  updateCitizenStatus(@Param('id') id: string, @Body() body: { status?: 'ACTIVE' | 'INACTIVE' }) {
-    return this.usersService.updateCitizenStatus(id, body.status as 'ACTIVE' | 'INACTIVE');
+  updateCitizenStatus(@Param('id') id: string, @Body() body: { status?: 'ACTIVE' | 'DISABLED' }) {
+    if (body.status !== 'ACTIVE' && body.status !== 'DISABLED') throw new BadRequestException('Statut de compte invalide');
+    return this.usersService.updateCitizenStatus(id, body.status);
+  }
+
+  @Get('reactivations')
+  reactivationRequests() {
+    return this.usersService.listReactivationRequests();
+  }
+
+  @Post('reactivations/:id/decision')
+  decideReactivation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: { user?: { id: string } },
+    @Body() body: { decision?: 'APPROVED' | 'REJECTED' },
+  ) {
+    if (body.decision !== 'APPROVED' && body.decision !== 'REJECTED') {
+      throw new BadRequestException('Décision de réactivation invalide');
+    }
+    return this.usersService.decideReactivation(id, req.user?.id ?? '', body.decision);
   }
 }

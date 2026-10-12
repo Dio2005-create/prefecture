@@ -19,7 +19,6 @@ import {
   AdminStampAndSignaturePage,
   AssociationAndOngPage,
   CitizenDocumentsPage,
-  ComplaintPage,
   NotificationsPage,
   OfficialInformationPage,
   UsersPage,
@@ -28,6 +27,7 @@ import { AppointmentsPage } from './pages/AppointmentsPage';
 import { CitizenSettingsPage } from './pages/CitizenSettingsPage';
 import { CitizenProfilePage } from './pages/CitizenProfilePage';
 import { AdminSettingsPage } from './pages/RoleFeaturePages';
+import { AdminComplaintsPage, CitizenComplaintsPage } from './pages/ComplaintsPage';
 import { PreferencesProvider } from './preferences';
 
 const queryClient = new QueryClient();
@@ -56,7 +56,8 @@ export default function App() {
                       <Route path="informations" element={<OfficialInformationPage />} />
                       <Route path="notifications" element={<NotificationsPage />} />
                       <Route path="rendez-vous" element={<AppointmentsPage />} />
-                      <Route path="signalements" element={<ComplaintPage />} />
+                      <Route path="reclamations" element={<CitizenComplaintsPage />} />
+                      <Route path="signalements" element={<Navigate to="/front/reclamations" replace />} />
                       <Route path="assistant" element={<CitizenAssistantPage />} />
                       <Route path="parametres" element={<CitizenSettingsPage />} />
                       <Route path="profil" element={<CitizenProfilePage />} />
@@ -75,6 +76,8 @@ export default function App() {
                       <Route path="" element={<Navigate to="/back/accueil" replace />} />
                       <Route path="accueil" element={<AdminDashboardPage />} />
                       <Route path="workflow" element={<AdminWorkflowPage />} />
+                      <Route path="reclamations" element={<AdminComplaintsPage />} />
+                      <Route path="notifications" element={<NotificationsPage />} />
                       <Route path="associations" element={<AdminAssociationPage />} />
                       <Route path="pilotage" element={<DashboardPage />} />
                       <Route path="documents" element={<DocumentsPage />} />

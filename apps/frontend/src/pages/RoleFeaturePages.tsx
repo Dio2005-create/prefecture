@@ -72,33 +72,6 @@ export function AssociationAndOngPage() {
   </section>;
 }
 
-export function ComplaintPage() {
-  const { t } = usePreferences();
-  const items = [
-    { title: 'Signalement d’un usage abusif', detail: 'Mise à jour envoyée au service compétent.', status: 'Reçu' },
-    { title: 'Réclamation sur un délai', detail: 'Instruction en cours par la direction administrative.', status: 'En instruction' },
-    { title: 'Demande de clarification', detail: 'Réponse attendue du service concerné.', status: 'Complément demandé' },
-  ];
-
-  return <section className="panel" style={{ padding: 24 }}>
-    <p className="eyebrow">{t('Médiation citoyenne')}</p>
-    <h1>{t('Signalement / réclamation')}</h1>
-    <p>{t('Déposez un signalement, une réclamation ou une demande d’assistance administrative.')}</p>
-    <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
-      {items.map((item) => (
-        <article className="recent-row" key={item.title}>
-          <ShieldCheck size={18} />
-          <span>
-            <strong>{t(item.title)}</strong>
-            <small>{t(item.detail)}</small>
-          </span>
-          <span className="status en_traitement">{t(item.status)}</span>
-        </article>
-      ))}
-    </div>
-  </section>;
-}
-
 export function OfficialInformationPage() {
   const { t, language } = usePreferences();
   const { data: documents = [], isLoading } = useQuery({ queryKey: ['public-documents'], queryFn: documentService.publicList });
@@ -130,13 +103,76 @@ export function NotificationsPage() {
 
 export function UsersPage() {
   const { t } = usePreferences();
+  const client = useQueryClient();
+  const { toast, notify } = useToast();
   const { data: users = [], isLoading } = useQuery({ queryKey: ['users'], queryFn: userService.list });
+  const { data: reactivationRequests = [], isLoading: reactivationsLoading } = useQuery({
+    queryKey: ['reactivation-requests'],
+    queryFn: userService.reactivationRequests,
+  });
   const citizens = users.filter((user) => user.role === 'CITIZEN');
   const isSuperAdmin = (user: typeof users[number]) => user.roles?.some(({ role }) => role.name === 'SUPERADMIN') ?? false;
   const superAdmins = users.filter(isSuperAdmin);
   const admins = users.filter((user) => user.role === 'ADMIN' && !isSuperAdmin(user));
-  const group = (title: string, entries: typeof users) => <section className="user-role-group"><h2>{t(title)}</h2><div style={{ display: 'grid', gap: 10 }}>{entries.length === 0 ? <p className="muted">{t('Aucun utilisateur.')}</p> : entries.map((user) => <div className="recent-row" key={user.id}><Users size={18} /><span><strong>{user.nom ?? user.email}</strong><small>{user.email} · {t(user.status)}</small></span></div>)}</div></section>;
-  return <section className="panel users-page" style={{ padding: 24 }}><p className="eyebrow">{t('Administration')}</p><h1>{t('Utilisateurs')}</h1><p>{t('Les citoyens et les administrateurs sont gérés dans des espaces distincts.')}</p>{isLoading ? <Loading /> : <div className="user-role-groups">{group('Super-administrateurs', superAdmins)}{group('Administrateurs', admins)}{group('Citoyens', citizens)}</div>}<div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}><ShieldCheck size={18} /><strong>{t('Accès séparés par rôle')}</strong></div></section>;
+  const updateStatus = async (id: string, status: 'ACTIVE' | 'DISABLED') => {
+    try {
+      await userService.updateCitizenStatus(id, status);
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['users'] }),
+        client.invalidateQueries({ queryKey: ['reactivation-requests'] }),
+      ]);
+      notify('success', t(status === 'DISABLED' ? 'Compte citoyen désactivé.' : 'Compte citoyen réactivé.'));
+    } catch (error) {
+      const message = axios.isAxiosError(error) ? (error.response?.data as { message?: string } | undefined)?.message : undefined;
+      notify('error', t(message ?? 'Impossible de modifier le statut du compte.'));
+    }
+  };
+  const decideReactivation = async (id: string, decision: 'APPROVED' | 'REJECTED') => {
+    try {
+      await userService.decideReactivation(id, decision);
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['users'] }),
+        client.invalidateQueries({ queryKey: ['reactivation-requests'] }),
+        client.invalidateQueries({ queryKey: ['notifications'] }),
+      ]);
+      notify('success', t(decision === 'APPROVED' ? 'Demande approuvée et compte réactivé.' : 'Demande refusée.'));
+    } catch (error) {
+      const message = axios.isAxiosError(error) ? (error.response?.data as { message?: string } | undefined)?.message : undefined;
+      notify('error', t(message ?? 'Impossible de traiter la demande de réactivation.'));
+    }
+  };
+  const group = (title: string, entries: typeof users) => <section className="user-role-group"><h2>{t(title)}</h2><div style={{ display: 'grid', gap: 10 }}>{entries.length === 0 ? <p className="muted">{t('Aucun utilisateur.')}</p> : entries.map((user) => <div className="recent-row" key={user.id}><Users size={18} /><span><strong>{user.nom ?? user.email ?? user.phone ?? t('Citoyen')}</strong><small>{user.email ?? user.phone ?? t('Aucune adresse email')} · {t(user.status)}</small></span></div>)}</div></section>;
+  return <section className="panel users-page" style={{ padding: 24 }}>
+    <p className="eyebrow">{t('Administration')}</p><h1>{t('Utilisateurs')}</h1><p>{t('Les citoyens et les administrateurs sont gérés dans des espaces distincts.')}</p>
+    {isLoading ? <Loading /> : <div className="user-role-groups">
+      {group('Super-administrateurs', superAdmins)}
+      {group('Administrateurs', admins)}
+      <section className="user-role-group"><h2>{t('Citoyens')}</h2><div style={{ display: 'grid', gap: 10 }}>
+        {citizens.length === 0 ? <p className="muted">{t('Aucun utilisateur.')}</p> : citizens.map((citizen) => <article className="recent-row" key={citizen.id}>
+          <Users size={18} /><span><strong>{citizen.nom ?? citizen.email ?? citizen.phone ?? t('Citoyen')}</strong><small>{citizen.email ?? citizen.phone ?? t('Aucune adresse email')} · {t(citizen.status)}</small></span>
+          {citizen.status === 'ACTIVE' && <button className="button danger small" type="button" onClick={() => void updateStatus(citizen.id, 'DISABLED')}>{t('Désactiver')}</button>}
+          {citizen.status !== 'ACTIVE' && <button className="button primary small" type="button" onClick={() => void updateStatus(citizen.id, 'ACTIVE')}>{t('Réactiver')}</button>}
+        </article>)}
+      </div></section>
+    </div>}
+    <section className="user-role-group reactivation-requests">
+      <h2>{t('Demandes de réactivation')}</h2>
+      {reactivationsLoading ? <Loading /> : reactivationRequests.length === 0 ? <p className="muted">{t('Aucune demande de réactivation en attente.')}</p> : <div style={{ display: 'grid', gap: 10 }}>
+        {reactivationRequests.map((request) => <article className="recent-row" key={request.id}>
+          <ShieldAlert size={18} /><span><strong>{request.user.nom ?? request.user.email ?? request.user.phone ?? t('Citoyen')}</strong>
+            <small>{request.user.email ?? request.user.phone ?? t('Aucune adresse email')} · {new Date(request.createdAt).toLocaleString()}</small>
+            <small>{t('Motif')} : {request.reason ?? t('Non renseigné')}</small>
+          </span>
+          <div className="button-group">
+            <button className="button primary small" type="button" onClick={() => void decideReactivation(request.id, 'APPROVED')}>{t('Approuver')}</button>
+            <button className="button danger small" type="button" onClick={() => void decideReactivation(request.id, 'REJECTED')}>{t('Refuser')}</button>
+          </div>
+        </article>)}
+      </div>}
+    </section>
+    {toast && <Toast toast={toast} />}
+    <div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}><ShieldCheck size={18} /><strong>{t('Accès séparés par rôle')}</strong></div>
+  </section>;
 }
 
 export function AdminSettingsPage() {
@@ -149,7 +185,7 @@ export function AdminSettingsPage() {
   const { data: settings = [], isLoading } = useQuery({ queryKey: ['admin-settings'], queryFn: adminService.listSettings, enabled: section === 'tariffs' || section === null });
   const client = useQueryClient();
   const { data: users = [], isLoading: usersLoading } = useQuery({ queryKey: ['users'], queryFn: userService.list, enabled: section === 'citizens' });
-  const tariffs = [['BIRTH_CERTIFICATE', 'Acte de naissance', '5000'], ['RESIDENCE_CERTIFICATE', 'Certificat de résidence', '3000'], ['NATIONALITY_CERTIFICATE', 'Certificat de nationalité', '10000'], ['CIN_REQUEST', 'Demande de CIN', '2000'], ['CIN_RENEWAL', 'Renouvellement de CIN', '2000'], ['GOOD_CHARACTER_CERTIFICATE', 'Certificat de bonne vie et mœurs', '3000'], ['BUILDING_PERMIT', 'Permis de construire', '25000'], ['LAND_STATUS', 'Situation foncière', '10000'], ['COMMERCIAL_LICENSE', 'Licence commerciale', '15000'], ['VEHICLE_REGISTRATION', 'Immatriculation de véhicule', '10000'], ['LOSS_DECLARATION', 'Déclaration de perte', '2000'], ['SIGNATURE_LEGALIZATION', 'Légalisation de signature', '5000'], ['COMPLAINT', 'Signalement ou réclamation', '0'], ['SPECIAL_REQUEST', 'Demande particulière', '5000'], ['ASSOCIATION_DECLARATION', 'Déclaration d’association / ONG', '20000'], ['EVENT_AUTHORIZATION', 'Autorisation de manifestation', '15000'], ['ACCREDITATION', 'Demande d’agrément', '20000'], ['ADMINISTRATIVE_AUTHORIZATION', 'Autorisation administrative', '10000']] as const;
+  const tariffs = [['BIRTH_CERTIFICATE', 'Acte de naissance', '5000'], ['RESIDENCE_CERTIFICATE', 'Certificat de résidence', '3000'], ['NATIONALITY_CERTIFICATE', 'Certificat de nationalité', '10000'], ['CIN_REQUEST', 'Demande de CIN', '2000'], ['CIN_RENEWAL', 'Renouvellement de CIN', '2000'], ['GOOD_CHARACTER_CERTIFICATE', 'Certificat de bonne vie et mœurs', '3000'], ['BUILDING_PERMIT', 'Permis de construire', '25000'], ['LAND_STATUS', 'Situation foncière', '10000'], ['COMMERCIAL_LICENSE', 'Licence commerciale', '15000'], ['VEHICLE_REGISTRATION', 'Immatriculation de véhicule', '10000'], ['LOSS_DECLARATION', 'Déclaration de perte', '2000'], ['SIGNATURE_LEGALIZATION', 'Légalisation de signature', '5000'], ['SPECIAL_REQUEST', 'Demande particulière', '5000'], ['ASSOCIATION_DECLARATION', 'Déclaration d’association / ONG', '20000'], ['EVENT_AUTHORIZATION', 'Autorisation de manifestation', '15000'], ['ACCREDITATION', 'Demande d’agrément', '20000'], ['ADMINISTRATIVE_AUTHORIZATION', 'Autorisation administrative', '10000']] as const;
   const [values, setValues] = useState<Record<string, string>>({});
   useEffect(() => { setValues(Object.fromEntries(tariffs.map(([type, , fallback]) => [type, settings.find((item) => item.key === `fee.${type}`)?.value ?? fallback]))); }, [settings]);
   const [profile, setProfile] = useState({ nom: user?.nom ?? '', email: user?.email ?? '', phone: user?.phone ?? '', cin: user?.cin ?? '' });
@@ -212,11 +248,14 @@ export function AdminSettingsPage() {
       notify('error', t(message ?? 'La création du compte administrateur a échoué.'));
     }
   };
-  const updateCitizenStatus = async (id: string, nextStatus: 'ACTIVE' | 'INACTIVE') => {
+  const updateCitizenStatus = async (id: string, nextStatus: 'ACTIVE' | 'DISABLED') => {
     try {
       await userService.updateCitizenStatus(id, nextStatus);
-      await client.invalidateQueries({ queryKey: ['users'] });
-      notify('success', t(nextStatus === 'INACTIVE' ? 'Compte citoyen désactivé.' : 'Compte citoyen réactivé.'));
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['users'] }),
+        client.invalidateQueries({ queryKey: ['reactivation-requests'] }),
+      ]);
+      notify('success', t(nextStatus === 'DISABLED' ? 'Compte citoyen désactivé.' : 'Compte citoyen réactivé.'));
     } catch (error) {
       await client.invalidateQueries({ queryKey: ['users'] });
       const message = axios.isAxiosError(error) ? (error.response?.data as { message?: string } | undefined)?.message : undefined;
@@ -260,7 +299,7 @@ export function AdminSettingsPage() {
       {section === 'tariffs' && (isLoading ? <Loading /> : <div className="admin-settings-form tariff-grid">{tariffs.map(([type, label]) => <label key={type}>{t(label)}<input type="number" min="0" value={values[type] ?? ''} onChange={(event) => setValues({ ...values, [type]: event.target.value })} /><small>Ar</small></label>)}<button className="button primary" type="button" onClick={() => askForConfirmation('Enregistrer les tarifs ?', 'Confirmez-vous l’enregistrement des nouveaux montants des démarches ?', saveTariffs)}>{t('Enregistrer les tarifs')}</button></div>)}
       {section === 'profile' && <form className="settings-form admin-settings-profile" onSubmit={(event) => { event.preventDefault(); askForConfirmation('Confirmer la modification du profil ?', 'Vos informations de profil seront mises à jour.', saveProfile); }}><label className="request-field">{t('Nom complet')}<input value={profile.nom} onChange={(event) => setProfile({ ...profile, nom: event.target.value })} /></label><label className="request-field">{t('Adresse email')}<input type="email" required value={profile.email} onChange={(event) => setProfile({ ...profile, email: event.target.value })} /></label><label className="request-field">{t('Numéro de téléphone')}<input value={profile.phone} onChange={(event) => setProfile({ ...profile, phone: event.target.value })} /></label><label className="request-field">CIN<input value={profile.cin} maxLength={12} inputMode="numeric" onChange={(event) => setProfile({ ...profile, cin: event.target.value.replace(/\D/g, '').slice(0, 12) })} /></label><button className="button primary" type="submit">{t('Enregistrer le profil')}</button></form>}
       {section === 'password' && <form className="settings-form admin-settings-profile" onSubmit={(event) => { event.preventDefault(); if (password.next.length < 8 || password.next !== password.confirmation) { void savePassword(); return; } askForConfirmation('Confirmer le changement de mot de passe ?', 'Vous serez déconnecté et devrez vous reconnecter avec le nouveau mot de passe.', savePassword); }}><label className="request-field">{t('Mot de passe actuel')}<input type="password" required autoComplete="current-password" value={password.current} onChange={(event) => setPassword({ ...password, current: event.target.value })} /></label><label className="request-field">{t('Nouveau mot de passe')}<input type="password" required minLength={8} autoComplete="new-password" value={password.next} onChange={(event) => setPassword({ ...password, next: event.target.value })} /></label><label className="request-field">{t('Confirmer le nouveau mot de passe')}<input type="password" required minLength={8} autoComplete="new-password" value={password.confirmation} onChange={(event) => setPassword({ ...password, confirmation: event.target.value })} /></label><button className="button primary" type="submit">{t('Modifier le mot de passe')}</button></form>}
-      {section === 'citizens' && (usersLoading ? <Loading /> : citizenAccounts.length ? <div className="admin-citizen-list">{citizenAccounts.map((citizen) => <article className="recent-row" key={citizen.id}><Users size={18} /><span><strong>{citizen.nom ?? citizen.email}</strong><small>{citizen.email} · {t(citizen.status)}</small></span><button className={`button small ${citizen.status === 'ACTIVE' ? 'danger' : 'primary'}`} type="button" onClick={() => { const nextStatus = citizen.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'; askForConfirmation(nextStatus === 'INACTIVE' ? 'Désactiver ce compte citoyen ?' : 'Réactiver ce compte citoyen ?', nextStatus === 'INACTIVE' ? 'Le citoyen ne pourra plus se connecter et ses sessions ouvertes seront fermées.' : 'Le citoyen pourra à nouveau se connecter à la plateforme.', () => updateCitizenStatus(citizen.id, nextStatus), nextStatus === 'INACTIVE'); }}>{t(citizen.status === 'ACTIVE' ? 'Désactiver' : 'Réactiver')}</button></article>)}</div> : <p className="muted">{t('Aucun utilisateur.')}</p>)}
+      {section === 'citizens' && (usersLoading ? <Loading /> : citizenAccounts.length ? <div className="admin-citizen-list">{citizenAccounts.map((citizen) => <article className="recent-row" key={citizen.id}><Users size={18} /><span><strong>{citizen.nom ?? citizen.email ?? citizen.phone ?? t('Citoyen')}</strong><small>{citizen.email ?? citizen.phone ?? t('Aucune adresse email')} · {t(citizen.status)}</small></span><button className={`button small ${citizen.status === 'ACTIVE' ? 'danger' : 'primary'}`} type="button" onClick={() => { const nextStatus = citizen.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE'; askForConfirmation(nextStatus === 'DISABLED' ? 'Désactiver ce compte citoyen ?' : 'Réactiver ce compte citoyen ?', nextStatus === 'DISABLED' ? 'Le citoyen ne pourra plus se connecter et ses sessions ouvertes seront fermées.' : 'Le citoyen pourra à nouveau se connecter à la plateforme.', () => updateCitizenStatus(citizen.id, nextStatus), nextStatus === 'DISABLED'); }}>{t(citizen.status === 'ACTIVE' ? 'Désactiver' : 'Réactiver')}</button></article>)}</div> : <p className="muted">{t('Aucun utilisateur.')}</p>)}
       {section === 'admins' && isSuperAdmin && <form className="admin-create-form admin-create-form-settings" onSubmit={(event) => { event.preventDefault(); askForConfirmation('Confirmer la création du compte administrateur ?', 'Un nouveau compte avec des droits administrateur sera créé.', createAdmin); }}><small>{t('Cette action est réservée aux super-administrateurs.')}</small><input placeholder={t('Nom')} value={adminForm.nom} onChange={(event) => setAdminForm({ ...adminForm, nom: event.target.value })} /><input type="email" placeholder={t('Email')} required value={adminForm.email} onChange={(event) => setAdminForm({ ...adminForm, email: event.target.value })} /><input placeholder={t('Téléphone')} value={adminForm.phone} onChange={(event) => setAdminForm({ ...adminForm, phone: event.target.value })} /><input type="password" placeholder={t('Mot de passe (8 caractères minimum)')} minLength={8} required value={adminForm.password} onChange={(event) => setAdminForm({ ...adminForm, password: event.target.value })} /><button className="button primary" type="submit">{t('Créer le compte')}</button></form>}
       </div>
     </>}
@@ -288,7 +327,7 @@ export function AdminDocumentTemplatesPage() {
   };
   const requestTypeLabels: Record<string, string> = {
     BIRTH_CERTIFICATE: 'Acte de naissance', RESIDENCE_CERTIFICATE: 'Certificat de résidence', NATIONALITY_CERTIFICATE: 'Certificat de nationalité', CIN_REQUEST: 'Demande de CIN', CIN_RENEWAL: 'Renouvellement de CIN',
-    GOOD_CHARACTER_CERTIFICATE: 'Certificat de bonne vie et mœurs', BUILDING_PERMIT: 'Permis de construire', LAND_STATUS: 'Situation foncière', COMMERCIAL_LICENSE: 'Licence commerciale', VEHICLE_REGISTRATION: 'Immatriculation véhicule', LOSS_DECLARATION: 'Déclaration de perte', SIGNATURE_LEGALIZATION: 'Légalisation de signature', COMPLAINT: 'Signalement ou réclamation', SPECIAL_REQUEST: 'Demande particulière',
+    GOOD_CHARACTER_CERTIFICATE: 'Certificat de bonne vie et mœurs', BUILDING_PERMIT: 'Permis de construire', LAND_STATUS: 'Situation foncière', COMMERCIAL_LICENSE: 'Licence commerciale', VEHICLE_REGISTRATION: 'Immatriculation véhicule', LOSS_DECLARATION: 'Déclaration de perte', SIGNATURE_LEGALIZATION: 'Légalisation de signature', SPECIAL_REQUEST: 'Demande particulière',
     ASSOCIATION_DECLARATION: 'Déclaration d’association / ONG', EVENT_AUTHORIZATION: 'Autorisation de manifestation / foire / quête', ACCREDITATION: 'Demande d’agrément', ADMINISTRATIVE_AUTHORIZATION: 'Autre autorisation administrative',
   };
   return <><section className="panel" style={{ padding: 24 }}>

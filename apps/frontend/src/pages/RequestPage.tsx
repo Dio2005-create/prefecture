@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Eye, Download, Pencil, Save, X } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { prefectureService } from '../services/api';
 import { Pagination } from '../components/ui';
 import type { RequestAttachmentRequirement, RequestType, RequestRequirements } from '../types';
@@ -20,7 +21,6 @@ const requestTypeByServiceCode: Record<string, RequestType> = {
   MANIF: 'EVENT_AUTHORIZATION',
   AGREMENT: 'ACCREDITATION',
   AUTRE: 'ADMINISTRATIVE_AUTHORIZATION',
-  RECLAMATION: 'COMPLAINT',
 };
 
 const requestLabels: Record<RequestType, string> = {
@@ -36,13 +36,17 @@ const requestLabels: Record<RequestType, string> = {
   VEHICLE_REGISTRATION: 'Immatriculation véhicule',
   LOSS_DECLARATION: 'Déclaration de perte',
   SIGNATURE_LEGALIZATION: 'Légalisation de signature',
-  COMPLAINT: 'Signalement ou réclamation',
+  COMPLAINT: 'Réclamation citoyenne',
   SPECIAL_REQUEST: 'Demande particulière',
   ASSOCIATION_DECLARATION: 'Déclaration d’association / ONG',
   EVENT_AUTHORIZATION: 'Autorisation de manifestation / foire / quête',
   ACCREDITATION: 'Demande d’agrément',
   ADMINISTRATIVE_AUTHORIZATION: 'Autre autorisation administrative',
 };
+
+function isRequestType(value: string | null): value is RequestType {
+  return value !== null && value !== 'COMPLAINT' && Object.prototype.hasOwnProperty.call(requestLabels, value);
+}
 
 type AttachmentRequirement = RequestAttachmentRequirement;
 
@@ -86,7 +90,9 @@ function renderValue(value: unknown) {
 export function RequestPage() {
   const { t, language } = usePreferences();
   const queryClient = useQueryClient();
-  const [requestType, setRequestType] = useState<RequestType>('BIRTH_CERTIFICATE');
+  const [searchParams] = useSearchParams();
+  const requestedType = searchParams.get('type');
+  const [requestType, setRequestType] = useState<RequestType>(() => isRequestType(requestedType) ? requestedType : 'BIRTH_CERTIFICATE');
   const { data: services = [], isLoading } = useQuery({
     queryKey: ['prefecture-services'],
     queryFn: prefectureService.listServices,
@@ -129,6 +135,11 @@ export function RequestPage() {
   });
 
   const [selectedServiceId, setSelectedServiceId] = useState('');
+  useEffect(() => {
+    if (requestType !== 'COMPLAINT' || selectedServiceId) return;
+    const complaintService = services.find((service) => service.code === 'RECLAMATION');
+    if (complaintService) setSelectedServiceId(complaintService.id);
+  }, [requestType, selectedServiceId, services]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -352,7 +363,7 @@ export function RequestPage() {
 
   return (
     <div className="request-page">
-      <div className="panel request-form-panel">
+      <div className="panel request-form-panel" id="nouvelle-demande">
         <div className="request-form-header"><div><p className="eyebrow">{t('Démarche en ligne')}</p><h2>{t('Nouvelle demande')}</h2><p>{t('Renseignez les informations nécessaires à l’instruction de votre dossier.')}</p></div><span className="request-form-badge">{t('Formulaire sécurisé')}</span></div>
         <div className="request-form">
           <section className="request-form-section"><h3>{t('Choisir la démarche')}</h3><div className="request-form-grid">
@@ -365,7 +376,7 @@ export function RequestPage() {
               if (service && requestTypeByServiceCode[service.code]) handleTypeChange(requestTypeByServiceCode[service.code]);
             }}>
               <option value="">{t('Choisir un service')}</option>
-              {services.map((service) => (
+              {services.filter((service) => service.code !== 'RECLAMATION').map((service) => (
                 <option key={service.id} value={service.id}>{language === 'mg' ? service.nameMg : service.nameFr}</option>
               ))}
             </select>
@@ -374,7 +385,7 @@ export function RequestPage() {
           <label className="request-field">
             {t('Type de démarche')}
             <select value={requestType} onChange={(e) => handleTypeChange(e.target.value as RequestType)}>
-              {Object.entries(requestLabels).map(([value, label]) => (
+              {Object.entries(requestLabels).filter(([value]) => value !== 'COMPLAINT').map(([value, label]) => (
                 <option key={value} value={value}>{t(label)}</option>
               ))}
             </select>
@@ -524,7 +535,7 @@ export function RequestPage() {
         </section>
       </div>}
 
-      <div className="panel" style={{ padding: 20 }}>
+      <div className="panel" id="mes-demandes" style={{ padding: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <h3>{t('Mes demandes')}</h3>
           <button className="button small" onClick={() => void refetchRequests()} disabled={refreshingRequests} aria-label={t('Actualiser mes demandes')}><RefreshCw size={15} /> {t('Actualiser')}</button>

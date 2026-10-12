@@ -98,6 +98,14 @@ export class RequestsController {
     response.send(pdf);
   }
 
+  @Get(':id/corrected-pdf')
+  async downloadCorrectedPdf(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user?: { id: string; roles?: string[]; role?: string } }, @Res() response: Response) {
+    if (!req.user) throw new BadRequestException('Utilisateur non authentifié');
+    const pdf = await this.requestsService.generateCorrectedPdf(id, req.user);
+    response.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="document-corrige-${id}.pdf"` });
+    response.send(pdf);
+  }
+
   @Get(':id/attachments/:attachmentId')
   async downloadAttachment(@Param('id', ParseUUIDPipe) id: string, @Param('attachmentId', ParseUUIDPipe) attachmentId: string, @Req() req: { user?: { id: string; roles?: string[]; role?: string } }, @Res() response: Response) {
     if (!req.user) throw new BadRequestException('Utilisateur non authentifié');

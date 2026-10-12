@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateRequestDto } from './dto/create-request.dto';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -39,6 +39,8 @@ const citizenEditableStatuses = ['DRAFT', 'SUBMITTED', 'PENDING_CHIEF', 'IN_REVI
 
 @Injectable()
 export class RequestsService {
+  private readonly logger = new Logger(RequestsService.name);
+
   constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
 
   getRequirements(type: RequestType) {
@@ -50,8 +52,11 @@ export class RequestsService {
   getModelPdf(type: string) {
     if (!Object.values(RequestType).includes(type as RequestType)) throw new NotFoundException('Modèle de démarche introuvable');
     const model = requestModels[type as RequestType];
-    const path = join(process.env.REQUEST_MODELS_DIR ?? join(process.cwd(), '../../modeles_pdf'), model.pdfFile);
-    if (!existsSync(path)) throw new NotFoundException('Le modèle PDF de cette démarche est indisponible');
+    const modelDirectories = process.env.REQUEST_MODELS_DIR
+      ? [process.env.REQUEST_MODELS_DIR]
+      : [join(process.cwd(), 'modeles_pdf'), join(process.cwd(), '../../modeles_pdf')];
+    const path = modelDirectories.map((directory) => join(directory, model.pdfFile)).find(existsSync);
+    if (!path) throw new NotFoundException('Le modèle PDF de cette démarche est indisponible');
     return { path, filename: model.pdfFile };
   }
 
@@ -91,6 +96,9 @@ export class RequestsService {
     attachmentFiles: Array<{ label: string; path: string; originalname: string; mimetype?: string; size?: number }> = [],
     payment?: { provider: PaymentProvider; phone: string; confirmedAmount: number; simulationPin: string },
   ) {
+    if (data.type === RequestType.COMPLAINT) {
+      throw new BadRequestException('Les réclamations concernant un document délivré doivent être déposées depuis la page Réclamations.');
+    }
     this.validateFormData(data.type, data.formData ?? {});
     const service = await this.prisma.prefectureService.findUnique({ where: { id: data.serviceId } });
     if (!service) throw new NotFoundException('Service introuvable');
@@ -151,6 +159,18 @@ export class RequestsService {
       include: { service: true, attachments: true, history: { orderBy: { createdAt: 'asc' } } },
     });
     await this.notifications.createForUser(userId, 'Demande soumise', `Votre demande « ${created.title ?? service.nameFr} » a été transmise à la Préfecture.`);
+    try {
+      await this.notifications.createForAdministrators(
+        'Nouveau dossier citoyen',
+        `${created.title ?? service.nameFr} a été transmis à la Préfecture.`,
+        { type: 'REQUEST_SUBMITTED', requestId: created.id },
+      );
+    } catch (error) {
+      this.logger.error(
+        `Request ${created.id} was submitted but admin notifications could not be created`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
     return created;
   }
 
@@ -161,6 +181,9 @@ export class RequestsService {
   ) {
     if (data.paymentConfirmed !== true) throw new BadRequestException('La confirmation du paiement est obligatoire avant l’envoi du dossier');
     if (!Object.values(RequestType).includes(data.type)) throw new BadRequestException('Type de demande invalide');
+    if (data.type === RequestType.COMPLAINT) {
+      throw new BadRequestException('Les réclamations concernant un document délivré doivent être déposées depuis la page Réclamations.');
+    }
     const requirements = getRequestRequirements(data.type);
     this.validateFormData(data.type, data.formData ?? {});
     const labels = data.attachmentLabels ?? [];
@@ -397,7 +420,8 @@ export class RequestsService {
 
   async generatePdf(requestId: string, user: { id: string; roles?: string[]; role?: string }) {
     const request = await this.findById(requestId);
-    const isBackOffice = user.role === 'ADMIN' || user.roles?.includes('ADMIN');
+    const isBackOffice = user.role === 'ADMIN' || user.role === 'SUPERADMIN'
+      || user.roles?.includes('ADMIN') || user.roles?.includes('SUPERADMIN');
     if (!isBackOffice && request.userId !== user.id) throw new ForbiddenException('Vous ne pouvez pas télécharger cette demande');
     if (request.status !== 'APPROVED') throw new ForbiddenException('Le document sera disponible après approbation');
     if (request.type === RequestType.CIN_REQUEST || request.type === RequestType.CIN_RENEWAL) {
@@ -406,10 +430,6 @@ export class RequestsService {
     const formData = request.formData && typeof request.formData === 'object' && !Array.isArray(request.formData)
       ? request.formData as Record<string, unknown>
       : {};
-    const completeness = getRequestCompleteness(request.type, formData, request.attachments);
-    if (completeness.missingFields.length || completeness.invalidFields.length || completeness.missingAttachments.length) {
-      throw new BadRequestException(`Le dossier est incomplet ou contient des informations invalides : ${[...completeness.missingFields, ...completeness.invalidFields, ...completeness.missingAttachments].join(', ')}`);
-    }
     const model = this.getModelPdf(request.type);
     const marks = await this.prisma.officialMark.findMany({ where: { isActive: true, kind: { in: ['STAMP', 'SIGNATURE'] } } });
 
@@ -432,7 +452,7 @@ export class RequestsService {
         VEHICLE_REGISTRATION: 'ATTESTATION D’IMMATRICULATION',
         LOSS_DECLARATION: 'DECLARATION DE PERTE',
         SIGNATURE_LEGALIZATION: 'LEGALISATION DE SIGNATURE',
-        COMPLAINT: 'RECEPISSE DE SIGNALEMENT',
+        COMPLAINT: 'RECEPISSE DE RÉCLAMATION',
         ASSOCIATION_DECLARATION: 'RECEPISSE DE DECLARATION D’ASSOCIATION',
         EVENT_AUTHORIZATION: 'AUTORISATION DE MANIFESTATION',
         ACCREDITATION: 'DECISION D’AGREMENT',
@@ -499,5 +519,16 @@ export class RequestsService {
       document.moveDown(3).fontSize(9).text('Document généré par la plateforme e-Servisy d’Ihosy. Toute vérification doit être effectuée auprès du service émetteur.', { align: 'center' });
       document.end();
     });
+  }
+
+  async generateCorrectedPdf(requestId: string, user: { id: string; roles?: string[]; role?: string }) {
+    const request = await this.findById(requestId, user);
+    if (!await this.prisma.citizenComplaint.findFirst({
+      where: { documentRequestId: request.id, userId: request.userId, status: 'RESOLVED' },
+      select: { id: true },
+    })) {
+      throw new NotFoundException('Aucune réclamation résolue ne correspond à ce document.');
+    }
+    return this.generatePdf(requestId, user);
   }
 }
