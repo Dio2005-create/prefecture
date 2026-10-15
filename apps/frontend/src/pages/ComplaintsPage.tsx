@@ -115,7 +115,7 @@ export function CitizenComplaintsPage() {
           <label className="request-field full-width">{t('Détails utiles (facultatif)')}
             <textarea rows={4} maxLength={5000} value={details} onChange={(event) => setDetails(event.target.value)} />
           </label>
-          <label className="request-field full-width">{t('Document justificatif (PDF, JPG ou PNG, 10 Mo maximum)')} *
+          <label className="request-field full-width">{t('Copie du document où se trouve l’erreur (PDF, JPG ou PNG, 10 Mo maximum)')} *
             <input type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
             {file && <small>{file.name} · {Math.ceil(file.size / 1024)} Ko</small>}
           </label>

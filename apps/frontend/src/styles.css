@@ -1010,6 +1010,11 @@ tbody tr:hover { background: #f6f8fc; }
 .admin-notification-popover article small { color: var(--ink-muted); line-height: 1.4; }
 .admin-notification-popover article .text-link { flex: 0 0 auto; font-size: 10px; }
 .complaint-page { display: grid; gap: 18px; }
+.status-page { display: grid; min-height: 100vh; place-items: center; padding: 24px; background: var(--surface-subtle); }
+.status-page-card { display: grid; width: min(520px, 100%); gap: 14px; justify-items: center; padding: 36px; text-align: center; color: var(--ink); border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-soft); }
+.status-page-card h1, .status-page-card p { margin: 0; }
+.status-page-code { color: var(--primary); font-size: clamp(48px, 12vw, 84px); font-weight: 800; line-height: 1; }
+.status-page-card .button { margin-top: 8px; text-decoration: none; }
 .complaint-form, .complaint-history, .complaint-admin-detail { display: grid; gap: 14px; }
 .complaint-form { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-subtle); }
 .complaint-form h2, .complaint-history h2, .complaint-admin-detail h2 { margin: 0; }

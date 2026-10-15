@@ -30,6 +30,19 @@ export function LoginPage() {
   const { t } = usePreferences();
   const navigate = useNavigate();
 
+  const getErrorMessage = (requestError: unknown, fallback: string) => {
+    if (axios.isAxiosError(requestError)) {
+      if (!requestError.response) {
+        return t(navigator.onLine
+          ? 'Le serveur est momentanément inaccessible. Vérifiez votre connexion et réessayez.'
+          : 'Aucune connexion Internet. Reconnectez-vous puis réessayez.');
+      }
+      const message = (requestError.response.data as { message?: string } | undefined)?.message;
+      if (message) return t(message);
+    }
+    return fallback;
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError('');
@@ -40,7 +53,7 @@ export function LoginPage() {
         setInfo(t(result.message));
         setFlow('forgot-code');
       } catch (requestError) {
-        setError(getErrorMessage(requestError, 'Impossible d’envoyer le code de réinitialisation.'));
+        setError(getErrorMessage(requestError, t('Impossible d’envoyer le code de réinitialisation.')));
       }
       return;
     }
@@ -54,7 +67,7 @@ export function LoginPage() {
         setNewPassword('');
         setInfo(t(result.message));
       } catch (requestError) {
-        setError(getErrorMessage(requestError, 'La réinitialisation du mot de passe a échoué.'));
+        setError(getErrorMessage(requestError, t('La réinitialisation du mot de passe a échoué.')));
       }
       return;
     }
@@ -72,9 +85,13 @@ export function LoginPage() {
       const responseMessage = axios.isAxiosError(requestError)
         ? (requestError.response?.data as { message?: string } | undefined)?.message
         : undefined;
-      setError(!isRegistering && responseMessage === 'Votre compte a été désactivé. Vous pouvez demander sa réactivation.'
-        ? t(responseMessage)
-        : t(responseMessage ?? 'Identifiant ou mot de passe incorrect.'));
+      if (axios.isAxiosError(requestError) && !requestError.response) {
+        setError(getErrorMessage(requestError, t('Identifiant ou mot de passe incorrect.')));
+      } else {
+        setError(!isRegistering && responseMessage === 'Votre compte a été désactivé. Vous pouvez demander sa réactivation.'
+          ? t(responseMessage)
+          : t(responseMessage ?? 'Identifiant ou mot de passe incorrect.'));
+      }
     }
   };
 
@@ -112,12 +129,6 @@ export function LoginPage() {
     setOtp(digits.padEnd(6, ' '));
     otpInputs.current[Math.min(digits.length, 5)]?.focus();
   };
-
-  function getErrorMessage(requestError: unknown, fallback: string) {
-    return axios.isAxiosError(requestError)
-      ? (requestError.response?.data as { message?: string } | undefined)?.message ?? fallback
-      : fallback;
-  }
 
   const changeFlow = (next: typeof flow) => {
     setFlow(next);
@@ -177,7 +188,7 @@ export function LoginPage() {
         <div className={`login-panel-inner${isRegistering ? ' is-registering' : ''}`}>
           <p className="eyebrow login-eyebrow">{t(isRegistering ? 'Inscription citoyenne' : isForgotFlow ? 'Récupération du mot de passe' : 'Connexion')}</p>
           <h1>{t(isRegistering ? 'Créer un compte' : isForgotFlow ? 'Mot de passe oublié' : 'Bienvenue')}</h1>
-          <p className="login-subtitle">{t(isRegistering ? 'Créez votre espace pour suivre vos démarches.' : isForgotFlow ? 'Un code de vérification sera envoyé à l’adresse email associée à votre compte.' : 'Accédez à votre espace citoyen ou administrateur.')}</p>
+          <p className="login-subtitle">{t(isRegistering ? 'Créez votre espace pour suivre vos démarches.' : isForgotFlow ? 'Un code de vérification sera envoyé à l’adresse email associée à votre compte citoyen ou administrateur.' : 'Accédez à votre espace citoyen ou administrateur.')}</p>
 
           <form onSubmit={submit}>
             {flow === 'login' || isRegistering ? <label>

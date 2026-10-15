@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { randomBytes, createHash, randomInt, scrypt as deriveKey, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,6 +11,7 @@ const scrypt = promisify(deriveKey);
 @Injectable()
 export class AuthService {
   private readonly sessions = new Map<string, { expiresAt: number; userId: string }>();
+  private readonly logger = new Logger(AuthService.name);
 
   constructor(private readonly prisma: PrismaService, private readonly mailer: MailerService) {}
 
@@ -315,7 +316,8 @@ export class AuthService {
       await this.mailer.sendPasswordResetOtp(email, code, user.locale);
     } catch (error) {
       await this.prisma.passwordResetOtp.update({ where: { id: otp.id }, data: { consumedAt: new Date() } });
-      throw error;
+      this.logger.error('Failed to send password reset code', error instanceof Error ? error.stack : String(error));
+      throw new ServiceUnavailableException('Le code de vérification ne peut pas être envoyé pour le moment. Réessayez plus tard.');
     }
     return { success: true, message: 'Un code de vérification a été envoyé à votre adresse email.' };
   }

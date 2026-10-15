@@ -1,7 +1,7 @@
 import { RequestType } from '@prisma/client';
 
-export type RequestFieldType = 'text' | 'textarea' | 'number' | 'date';
-export interface RequestFieldRequirement { name: string; label: string; type: RequestFieldType; required: boolean; }
+export type RequestFieldType = 'text' | 'textarea' | 'number' | 'date' | 'select';
+export interface RequestFieldRequirement { name: string; label: string; type: RequestFieldType; required: boolean; options?: string[]; }
 export interface RequestAttachmentRequirement {
   key: string;
   label: string;
@@ -12,7 +12,7 @@ export interface RequestAttachmentRequirement {
 }
 export interface RequestRequirements { fields: RequestFieldRequirement[]; attachments: RequestAttachmentRequirement[]; }
 
-const field = (name: string, label: string, type: RequestFieldType = 'text', required = true): RequestFieldRequirement => ({ name, label, type, required });
+const field = (name: string, label: string, type: RequestFieldType = 'text', required = true, options?: string[]): RequestFieldRequirement => ({ name, label, type, required, ...(options ? { options } : {}) });
 const required = (key: string, label: string, options: Pick<RequestAttachmentRequirement, 'multiple' | 'minFiles' | 'pairGroup'> = {}): RequestAttachmentRequirement => ({ key, label, required: true, ...options });
 const optional = (key: string, label: string, options: Pick<RequestAttachmentRequirement, 'multiple' | 'minFiles' | 'pairGroup'> = {}): RequestAttachmentRequirement => ({ key, label, required: false, ...options });
 const cinPair = (key: string, label: string, pairGroup = key, multiple = false) => [
@@ -46,11 +46,11 @@ export const requestRequirements: Record<RequestType, RequestRequirements> = {
     attachments: [...cinPair('cin-demandeur', 'CIN du demandeur'), required('residence', 'Certificat de résidence'), required('fokontany', 'Attestation du Fokontany')],
   },
   BUILDING_PERMIT: {
-    fields: [field('nom', 'Nom et prénoms / raison sociale'), field('cinNif', 'CIN / NIF'), field('adresse', 'Adresse', 'textarea'), field('telephone', 'Téléphone'), field('natureProjet', 'Nature du projet', 'textarea'), field('adresseTerrain', 'Localisation du terrain', 'textarea'), field('referenceParcelle', 'Références cadastrales / titre'), field('surface', 'Surface à construire (m²)', 'number')],
+    fields: [field('nom', 'Nom et prénoms / raison sociale'), field('cinNif', 'CIN / NIF'), field('adresse', 'Adresse', 'textarea'), field('telephone', 'Téléphone'), field('natureProjet', 'Nature du projet', 'textarea'), field('adresseTerrain', 'Localisation du terrain', 'textarea'), field('referenceParcelle', 'Références cadastrales / titre'), field('surface', 'Surface à construire', 'number'), field('uniteSurface', 'Unité de mesure', 'select', true, ['m²', 'Are'])],
     attachments: [required('situation-juridique', 'Certificat de situation juridique (moins de 3 mois)'), required('plan-topographique', 'Plan topographique'), required('plan-masse', 'Plan de masse'), required('plan-projet', 'Plan du projet'), required('demande-alignement', 'Demande d’alignement'), required('propriete', 'Titre de propriété')],
   },
   LAND_STATUS: {
-    fields: [field('nom', 'Nom et prénoms'), field('cin', 'Numéro CIN'), field('adresse', 'Adresse', 'textarea'), field('referenceParcelle', 'Références du terrain (titre / cadastre)'), field('adresseTerrain', 'Localisation précise', 'textarea'), field('superficie', 'Superficie approximative'), field('motif', 'Motif de la demande', 'textarea')],
+    fields: [field('nom', 'Nom et prénoms'), field('cin', 'Numéro CIN'), field('adresse', 'Adresse', 'textarea'), field('referenceParcelle', 'Références du terrain (titre / cadastre)'), field('adresseTerrain', 'Localisation précise', 'textarea'), field('superficie', 'Superficie approximative', 'number'), field('uniteSuperficie', 'Unité de mesure', 'select', true, ['m²', 'Are']), field('motif', 'Motif de la demande', 'textarea')],
     attachments: [required('titre-foncier', 'Titre foncier ou certificat de situation juridique'), required('plan-situation', 'Plan de situation')],
   },
   COMMERCIAL_LICENSE: {

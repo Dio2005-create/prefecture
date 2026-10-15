@@ -400,7 +400,16 @@ export function RequestPage() {
             {formFields.map((field) => (
               <label className={`request-field ${field.type === 'textarea' ? 'full-width' : ''}`} key={field.name}>
                 {t(field.label)}{field.required ? ' *' : ''}
-                {field.type === 'textarea' ? (
+                {field.type === 'select' ? (
+                  <select
+                    required={field.required}
+                    value={formData[field.name] ?? ''}
+                    onChange={(e) => { setFormData((prev) => ({ ...prev, [field.name]: e.target.value })); setFieldErrors((prev) => ({ ...prev, [field.name]: '' })); }}
+                  >
+                    <option value="">{t('Choisir une unité')}</option>
+                    {(field.options ?? []).map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                ) : field.type === 'textarea' ? (
                   <textarea
                     required={field.required}
                     value={formData[field.name] ?? ''}
@@ -492,7 +501,7 @@ export function RequestPage() {
                 {(editRequirements?.fields ?? []).map((field) => (
                   <label className={`request-field ${field.type === 'textarea' ? 'full-width' : ''}`} key={field.name}>
                     {t(field.label)}{field.required ? ' *' : ''}
-                    {field.type === 'textarea' ? <textarea rows={3} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} /> : <input type={field.type} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} />}
+                    {field.type === 'select' ? <select required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))}><option value="">{t('Choisir une unité')}</option>{(field.options ?? []).map((option) => <option key={option} value={option}>{option}</option>)}</select> : field.type === 'textarea' ? <textarea rows={3} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} /> : <input type={field.type} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} />}
                   </label>
                 ))}
               </div></section>

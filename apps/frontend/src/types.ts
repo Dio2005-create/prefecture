@@ -102,7 +102,7 @@ export interface RequestAttachmentRequirement {
 }
 
 export interface RequestRequirements {
-  fields: Array<{ name: string; label: string; type: 'text' | 'textarea' | 'number' | 'date'; required: boolean }>;
+  fields: Array<{ name: string; label: string; type: 'text' | 'textarea' | 'number' | 'date' | 'select'; required: boolean; options?: string[] }>;
   attachments: RequestAttachmentRequirement[];
 }
 

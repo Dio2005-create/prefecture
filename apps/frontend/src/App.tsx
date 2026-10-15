@@ -1,4 +1,5 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppLayout } from './layouts/AppLayout';
 import { DashboardPage } from './pages/DashboardPage';
@@ -28,15 +29,41 @@ import { CitizenSettingsPage } from './pages/CitizenSettingsPage';
 import { CitizenProfilePage } from './pages/CitizenProfilePage';
 import { AdminSettingsPage } from './pages/RoleFeaturePages';
 import { AdminComplaintsPage, CitizenComplaintsPage } from './pages/ComplaintsPage';
-import { PreferencesProvider } from './preferences';
+import { PreferencesProvider, usePreferences } from './preferences';
 
 const queryClient = new QueryClient();
 
+function ConnectionStatusPage({ notFound = false }: { notFound?: boolean }) {
+  const { t } = usePreferences();
+  return <main className="status-page">
+    <section className="status-page-card">
+      <p className="status-page-code">{notFound ? '404' : t('Hors ligne')}</p>
+      <h1>{t(notFound ? 'Page introuvable' : 'Connexion Internet indisponible')}</h1>
+      <p>{t(notFound ? 'La page demandée n’existe pas ou a été déplacée.' : 'Rétablissez votre connexion Internet puis réessayez.')}</p>
+      {notFound
+        ? <Link className="button primary" to="/">{t('Retour à l’accueil')}</Link>
+        : <button className="button primary" type="button" onClick={() => window.location.reload()}>{t('Réessayer')}</button>}
+    </section>
+  </main>;
+}
+
 export default function App() {
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const updateOnlineStatus = () => setIsOnline(navigator.onLine);
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus);
+      window.removeEventListener('offline', updateOnlineStatus);
+    };
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <PreferencesProvider>
+        {!isOnline ? <ConnectionStatusPage /> : (
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -61,6 +88,7 @@ export default function App() {
                       <Route path="assistant" element={<CitizenAssistantPage />} />
                       <Route path="parametres" element={<CitizenSettingsPage />} />
                       <Route path="profil" element={<CitizenProfilePage />} />
+                      <Route path="*" element={<ConnectionStatusPage notFound />} />
                     </Routes>
                   </AppLayout>
                 </RequireCitizen>
@@ -93,13 +121,16 @@ export default function App() {
                       <Route path="parametres" element={<AdminSettingsPage />} />
                       <Route path="profil" element={<CitizenProfilePage />} />
                       <Route path="mot-de-passe" element={<CitizenSettingsPage />} />
+                      <Route path="*" element={<ConnectionStatusPage notFound />} />
                     </Routes>
                   </AppLayout>
                 </RequireRoles>
               }
             />
+            <Route path="*" element={<ConnectionStatusPage notFound />} />
           </Routes>
         </AuthProvider>
+        )}
         </PreferencesProvider>
       </BrowserRouter>
     </QueryClientProvider>
