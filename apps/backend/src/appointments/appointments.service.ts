@@ -1,5 +1,8 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { AppointmentStatus } from '@prisma/client';
+import PDFDocument = require('pdfkit');
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { PrismaService } from '../prisma/prisma.service';
 import { generateAppointmentSlots } from './appointment-slots';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -214,6 +217,80 @@ export class AppointmentsService {
     return this.prisma.appointment.findMany({ where: { userId }, orderBy: { startsAt: 'desc' }, include: { request: { include: { service: true } } } });
   }
 
+  async generateTicket(id: string, userId: string) {
+    const appointment = await this.prisma.appointment.findUnique({
+      where: { id },
+      include: {
+        user: { select: { id: true, nom: true, email: true, phone: true } },
+        request: { include: { service: true } },
+      },
+    });
+    if (!appointment || appointment.userId !== userId) throw new NotFoundException('Rendez-vous introuvable');
+    if (appointment.status !== AppointmentStatus.BOOKED && appointment.status !== AppointmentStatus.COMPLETED) {
+      throw new ForbiddenException('Le ticket sera disponible après confirmation du rendez-vous par l’administration');
+    }
+
+    const logoPath = [
+      join(process.cwd(), 'assets', 'logoPrefet.png'),
+      join(process.cwd(), '..', 'frontend', 'public', 'logoPrefet.png'),
+      join(process.cwd(), 'apps', 'frontend', 'public', 'logoPrefet.png'),
+    ].find(existsSync);
+    if (!logoPath) throw new InternalServerErrorException('Le logo de la préfecture est indisponible');
+    const marks = await this.prisma.officialMark.findMany({
+      where: { isActive: true, kind: { in: ['STAMP', 'SIGNATURE'] } },
+    });
+    const stamp = marks.find((mark) => mark.kind === 'STAMP' && existsSync(mark.storagePath));
+    const signature = marks.find((mark) => mark.kind === 'SIGNATURE' && existsSync(mark.storagePath));
+    const year = new Intl.DateTimeFormat('en', { year: 'numeric', timeZone: 'Indian/Antananarivo' }).format(appointment.startsAt);
+    const reference = `RDV-${year}-${appointment.id.toUpperCase()}`;
+
+    return new Promise<Buffer>((resolve, reject) => {
+      const document = new PDFDocument({ size: [420, 595], margin: 32 });
+      const chunks: Buffer[] = [];
+      document.on('data', (chunk: Buffer) => chunks.push(chunk));
+      document.on('end', () => resolve(Buffer.concat(chunks)));
+      document.on('error', reject);
+
+      document.image(logoPath, 170, 24, { fit: [80, 56], align: 'center' });
+      document.moveDown(5);
+      document.fontSize(13).font('Helvetica-Bold').text('PRÉFECTURE D’IHOSY', { align: 'center' });
+      document.moveDown(0.4).fontSize(17).text('TICKET DE RENDEZ-VOUS', { align: 'center' });
+      document.moveDown(0.5).fontSize(9).font('Helvetica').text('JUSTIFICATIF DE RENDEZ-VOUS CONFIRMÉ', { align: 'center' });
+      document.moveDown(1);
+      document.strokeColor('#6b7d70').lineWidth(1).roundedRect(28, document.y, 364, 255, 10).stroke();
+      document.moveDown(0.7);
+      document.fontSize(9).fillColor('#53645a').text('RÉFÉRENCE DU TICKET');
+      document.moveDown(0.2).fontSize(11).font('Helvetica-Bold').fillColor('#172820').text(reference, { width: 340 });
+      document.moveDown(1);
+      const date = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'full', timeZone: 'Indian/Antananarivo' }).format(appointment.startsAt);
+      const time = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Indian/Antananarivo' }).format(appointment.startsAt);
+      const endTime = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Indian/Antananarivo' }).format(appointment.endsAt);
+      const purpose = appointment.request?.service.nameFr ?? appointment.notes?.trim() ?? 'Rendez-vous à la préfecture';
+      const rows: Array<[string, string]> = [
+        ['NOM DU CITOYEN', appointment.user.nom ?? 'Non renseigné'],
+        ['DATE', date],
+        ['HEURE', `${time} – ${endTime}`],
+        ['LIEU / GUICHET', appointment.office],
+        ['MOTIF', purpose],
+        ...(appointment.user.phone ? [['TÉLÉPHONE', appointment.user.phone] as [string, string]] : []),
+        ...(appointment.user.email ? [['EMAIL', appointment.user.email] as [string, string]] : []),
+      ];
+      rows.forEach(([label, value]) => {
+        document.font('Helvetica').fontSize(8).fillColor('#53645a').text(label);
+        document.moveDown(0.15).font('Helvetica-Bold').fontSize(10).fillColor('#172820').text(value, { width: 330 });
+        document.moveDown(0.6);
+      });
+
+      const markY = Math.min(document.y + 10, 435);
+      const rightEdge = 420 - 32;
+      if (signature && existsSync(signature.storagePath)) document.image(signature.storagePath, rightEdge - 120, markY, { fit: [120, 58] });
+      if (stamp && existsSync(stamp.storagePath)) document.image(stamp.storagePath, rightEdge - 52, markY + 47, { fit: [52, 44] });
+      document.font('Helvetica').fontSize(8).fillColor('#53645a')
+        .text('Présentez ce ticket à votre arrivée. Merci de vous présenter quelques minutes avant l’heure indiquée.', 32, 535, { width: 356, align: 'center' });
+      document.end();
+    });
+  }
+
   listAll() {
     return this.prisma.appointment.findMany({
       orderBy: { startsAt: 'asc' },
@@ -408,6 +485,13 @@ export class AppointmentsService {
       }
       return { appointment: updatedAppointment, completedCinRequest, reopenedCinRequest };
     });
+    if (status === AppointmentStatus.BOOKED && appointment.status !== AppointmentStatus.BOOKED) {
+      await this.notifications.createForUser(
+        appointment.userId,
+        'Rendez-vous confirmé',
+        `Votre rendez-vous du ${appointment.startsAt.toLocaleString('fr-FR', { timeZone: 'Indian/Antananarivo' })} à ${appointment.office} est confirmé. Téléchargez votre ticket depuis la rubrique « Mes rendez-vous ».`,
+      );
+    }
     if (result.completedCinRequest) {
       await this.notifications.createForUser(result.completedCinRequest.userId, 'Demande de CIN prête', 'Le rendez-vous de prise des empreintes est terminé. Votre demande de CIN est validée ; vous pouvez la retirer au guichet.');
     }

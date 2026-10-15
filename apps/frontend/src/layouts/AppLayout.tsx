@@ -5,7 +5,7 @@ import { Archive, Bell, Bot, CalendarDays, FileText, LayoutDashboard, Menu, Sear
 import { createPortal } from 'react-dom';
 import { useAuth, type AuthUser } from '../auth';
 import { usePreferences } from '../preferences';
-import { notificationService } from '../services/api';
+import { authService, notificationService } from '../services/api';
 import type { NotificationItem } from '../types';
 
 type AppLayoutVariant = 'frontoffice' | 'backoffice';
@@ -48,8 +48,10 @@ function getProfileName(user: AuthUser | null, variant: AppLayoutVariant, langua
 
 function NavigationPreferences({ showNotifications, showAdminNotifications = false }: { showNotifications: boolean; showAdminNotifications?: boolean }) {
   const { language, setLanguage, theme, toggleTheme, t } = usePreferences();
+  const { authenticated, user, updateUser } = useAuth();
   const { pathname } = useLocation();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [languageError, setLanguageError] = useState(false);
   const queryClient = useQueryClient();
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications'],
@@ -65,12 +67,27 @@ function NavigationPreferences({ showNotifications, showAdminNotifications = fal
     await notificationService.markAsRead(id);
     await queryClient.invalidateQueries({ queryKey: ['notifications'] });
   };
+  const changeLanguage = async (nextLanguage: 'fr' | 'mg') => {
+    setLanguageError(false);
+    if (!authenticated || !user) {
+      setLanguage(nextLanguage);
+      return;
+    }
+    try {
+      const result = await authService.updateLocale(nextLanguage);
+      updateUser(result.user as AuthUser);
+      setLanguage(nextLanguage);
+    } catch {
+      setLanguageError(true);
+    }
+  };
   return <div className="nav-preferences">
     <span className="nav-preferences-label"><Languages size={15} /></span>
     <div className="language-switch" role="group" aria-label="Langue / Fiteny">
-      <button type="button" aria-pressed={language === 'fr'} onClick={() => setLanguage('fr')}>FR</button>
-      <button type="button" aria-pressed={language === 'mg'} onClick={() => setLanguage('mg')}>MG</button>
+      <button type="button" aria-pressed={language === 'fr'} onClick={() => void changeLanguage('fr')}>FR</button>
+      <button type="button" aria-pressed={language === 'mg'} onClick={() => void changeLanguage('mg')}>MG</button>
     </div>
+    {languageError && <span className="language-preference-error" role="alert">{t('Impossible d’enregistrer la langue. Réessayez.')}</span>}
     <button className="icon-button theme-toggle" type="button" onClick={toggleTheme} aria-label={t(theme === 'light' ? 'Activer le mode sombre' : 'Activer le mode clair')} title={t(theme === 'light' ? 'Mode sombre' : 'Mode clair')}>
       {theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}
     </button>
@@ -103,12 +120,15 @@ export function AppLayout({ children, variant }: { children: ReactNode; variant:
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const { pathname } = useLocation();
   const { logout, user } = useAuth();
-  const { language, t } = usePreferences();
+  const { language, setLanguage, t } = usePreferences();
   const navigation = getNavigation(variant, user);
   const title = variant === 'backoffice'
     ? t('Back-Office préfecture')
     : '';
   const profileName = getProfileName(user, variant, language);
+  useLayoutEffect(() => {
+    if (user?.locale === 'fr' || user?.locale === 'mg') setLanguage(user.locale);
+  }, [setLanguage, user?.id, user?.locale]);
   useEffect(() => {
     setProfileMenuOpen(false);
     setOpen(false);
@@ -123,10 +143,7 @@ export function AppLayout({ children, variant }: { children: ReactNode; variant:
       const menuRect = menu.getBoundingClientRect();
       const margin = 8;
       const right = Math.max(margin, Math.min(window.innerWidth - triggerRect.right, window.innerWidth - menuRect.width - margin));
-      const topAbove = triggerRect.top - menuRect.height - margin;
-      const top = topAbove >= margin
-        ? topAbove
-        : Math.max(margin, Math.min(triggerRect.bottom + margin, window.innerHeight - menuRect.height - margin));
+      const top = Math.max(margin, Math.min(triggerRect.bottom + margin, window.innerHeight - menuRect.height - margin));
       setProfileMenuPosition({ top, right });
     };
     positionMenu();
@@ -163,7 +180,7 @@ export function AppLayout({ children, variant }: { children: ReactNode; variant:
   </aside>;
   const profilePath = variant === 'frontoffice' ? '/front/profil' : '/back/profil';
   const passwordPath = variant === 'frontoffice' ? '/front/parametres' : '/back/mot-de-passe';
-  const topbar = <header className="topbar"><button className="icon-button menu-button" onClick={() => setOpen(true)} aria-label={t('Ouvrir le menu')}><Menu size={20} /></button><NavigationPreferences showNotifications={variant === 'frontoffice'} showAdminNotifications={variant === 'backoffice'} /><div className="profile"><span className="avatar">{variant === 'frontoffice' ? <UserRound size={16} /> : <BriefcaseBusiness size={16} />}</span><span><strong>{profileName}</strong><small>{t('Session locale')}</small></span><button ref={profileTriggerRef} className="icon-button profile-menu-trigger" type="button" aria-expanded={profileMenuOpen} aria-label={t('Ouvrir le menu du profil')} onClick={() => setProfileMenuOpen((value) => !value)}><Menu size={18} /></button></div></header>;
+  const topbar = <header className="topbar"><button className="icon-button menu-button" onClick={() => setOpen(true)} aria-label={t('Ouvrir le menu')}><Menu size={20} /></button><NavigationPreferences showNotifications={variant === 'frontoffice'} showAdminNotifications={variant === 'backoffice'} /><div className="profile"><span className="avatar">{variant === 'frontoffice' ? <UserRound size={16} /> : <BriefcaseBusiness size={16} />}</span><span className="profile-identity"><strong>{profileName}</strong><span className="online-indicator" role="img" aria-label={t('En ligne')} title={t('En ligne')} /></span><button ref={profileTriggerRef} className="icon-button profile-menu-trigger" type="button" aria-expanded={profileMenuOpen} aria-label={t('Ouvrir le menu du profil')} onClick={() => setProfileMenuOpen((value) => !value)}><Menu size={18} /></button></div></header>;
 
   return <div className={variant === 'frontoffice' ? 'app-shell frontoffice-shell' : 'app-shell backoffice-shell'}>
     {variant === 'frontoffice' ? <div className="frontoffice-sticky-header">{sidebar}{topbar}</div> : sidebar}

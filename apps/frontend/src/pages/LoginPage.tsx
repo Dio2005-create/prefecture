@@ -174,7 +174,7 @@ export function LoginPage() {
       </div>
       <section className="login-visual">
         <div className="login-visual-inner">
-          <img src="/logoPrefet.jpg" alt={t('Logo de la préfecture')} className="login-logo" />
+          <img src="/logoPrefet.png" alt={t('Logo de la préfecture')} className="login-logo" />
           <p className="eyebrow">{t('E-Servisy d’Ihosy')}</p>
           <h2>{t('Un guichet unique pour l’administration.')}</h2>
           <p className="login-visual-copy">

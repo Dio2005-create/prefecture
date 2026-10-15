@@ -68,4 +68,14 @@ export class AuthController {
     if (!token) throw new UnauthorizedException('Session invalide');
     return this.auth.updateProfile(token, body);
   }
+
+  @Patch('preferences')
+  updatePreferences(
+    @Headers('authorization') authorization: string | undefined,
+    @Body() body: { locale?: string },
+  ) {
+    const token = authorization?.replace(/^Bearer\s+/i, '');
+    if (!token) throw new UnauthorizedException('Session invalide');
+    return this.auth.updateLocale(token, body.locale ?? '');
+  }
 }

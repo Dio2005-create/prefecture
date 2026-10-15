@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { AppointmentStatus } from '@prisma/client';
 import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
 import { AuthGuard } from '../auth/auth.guard';
@@ -74,6 +75,18 @@ export class AppointmentsController {
 
   @Get()
   list(@Req() req: { user?: { id: string } }) { return this.appointments.listByUser(req.user?.id ?? ''); }
+
+  @Get(':id/ticket')
+  async downloadTicket(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user?: { id: string } }, @Res() response: Response) {
+    const userId = req.user?.id;
+    if (!userId) throw new NotFoundException('Utilisateur introuvable');
+    const pdf = await this.appointments.generateTicket(id, userId);
+    response.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="ticket-rdv-${id}.pdf"`,
+    });
+    response.send(pdf);
+  }
 
   @Get('admin')
   @UseGuards(RolesGuard)

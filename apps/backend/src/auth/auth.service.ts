@@ -1,4 +1,4 @@
-import { Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { randomBytes, createHash, randomInt, scrypt as deriveKey, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { PrismaService } from '../prisma/prisma.service';
@@ -224,6 +224,18 @@ export class AuthService {
     if (duplicate) throw new UnauthorizedException('Ces informations sont déjà utilisées par un autre compte');
     const user = await this.prisma.user.update({ where: { id: session.userId }, data: { email, nom: input.nom?.trim() || null, phone, cin }, include: { roles: { include: { role: true } } } });
     this.sessions.set(token, { expiresAt: Date.now() + SESSION_DURATION, userId: session.userId });
+    return { success: true, user: this.toUserPayload(user) };
+  }
+
+  async updateLocale(token: string, locale: string) {
+    const session = this.sessions.get(token);
+    if (!session || session.expiresAt < Date.now()) throw new UnauthorizedException('Session expirée');
+    if (locale !== 'fr' && locale !== 'mg') throw new BadRequestException('La langue doit être le français ou le malagasy.');
+    const user = await this.prisma.user.update({
+      where: { id: session.userId },
+      data: { locale },
+      include: { roles: { include: { role: true } } },
+    });
     return { success: true, user: this.toUserPayload(user) };
   }
 

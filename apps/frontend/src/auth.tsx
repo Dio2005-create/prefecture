@@ -13,6 +13,7 @@ export type AuthUser = {
   nom: string | null;
   phone?: string | null;
   cin?: string | null;
+  locale?: string;
   role: 'CITIZEN' | 'ADMIN' | 'SUPERADMIN';
   roles: string[];
 };

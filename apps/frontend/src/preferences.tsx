@@ -15,12 +15,11 @@ interface PreferencesContextValue {
 const PreferencesContext = createContext<PreferencesContextValue | undefined>(undefined);
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguage] = useState<AppLanguage>(() => localStorage.getItem('archives-language') === 'mg' ? 'mg' : 'fr');
+  const [language, setLanguage] = useState<AppLanguage>('fr');
   const [theme, setTheme] = useState<AppTheme>(() => localStorage.getItem('archives-theme') === 'dark' ? 'dark' : 'light');
 
   useEffect(() => {
     document.documentElement.lang = language;
-    localStorage.setItem('archives-language', language);
   }, [language]);
 
   useEffect(() => {

@@ -2,6 +2,8 @@ import type { AppLanguage } from './preferences';
 
 const malagasy: Record<string, string> = {
   'Accueil citoyen': 'Fandraisana',
+  'En ligne': 'Mavitrika',
+  'Impossible d’enregistrer la langue. Réessayez.': 'Tsy afaka mitahiry ny fiteny. Andramo indray.',
   'Mes démarches': 'Ny fangatahako',
   'Mes documents': 'Ny taratasiko',
   'Textes officiels': 'Lalàna ofisialy',
@@ -45,6 +47,9 @@ const malagasy: Record<string, string> = {
   'Réponse de l’administration': 'Valin’ny fitantanana',
   'Voir le justificatif': 'Hijery ny taratasy fanamarinana',
   'Télécharger le document corrigé': 'Hisintona ny taratasy voahitsy',
+  'Télécharger le ticket': 'Hisintona ny tapakila',
+  'Le ticket ne peut pas être téléchargé. Réessayez.': 'Tsy afaka misintona ny tapakila. Andramo indray.',
+  'Rendez-vous confirmé': 'Voamarina ny fotoana',
   'En cours de traitement': 'Eo am-panodinana',
   'Document corrigé et redélivré': 'Voahitsy ary nomena indray ny taratasy',
   'Corriger les informations du document': 'Hanitsy ny mombamomba ny taratasy',
@@ -388,6 +393,8 @@ const malagasy: Record<string, string> = {
   'Envoi...': 'Eo am-pandefasana…',
   'Soumettre la demande': 'Alefaso ny fangatahana',
   'Mes demandes': 'Ny fangatahako',
+  'Mes demandes le plus recent': 'Ny fangatahako farany',
+  'Modifier le mot de passe': 'Ovaina ny teny miafina',
   'Consulter mes demandes': 'Hijery ny fangatahako',
   'Actualiser mes demandes': 'Havaozy ny fangatahako',
   Actualiser: 'Havaozy',

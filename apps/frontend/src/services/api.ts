@@ -34,6 +34,8 @@ export const authService = {
     (await api.post<{ success: boolean; message: string }>('/auth/change-password', { currentPassword, newPassword })).data,
   updateProfile: async (payload: { nom: string; email: string; phone: string; cin: string }) =>
     (await api.patch<{ success: boolean; user: unknown }>('/auth/profile', payload)).data,
+  updateLocale: async (locale: 'fr' | 'mg') =>
+    (await api.patch<{ success: boolean; user: unknown }>('/auth/preferences', { locale })).data,
 };
 
 export const prefectureService = {
@@ -113,6 +115,7 @@ export const complaintService = {
 export const appointmentService = {
   available: async (date?: string) => (await api.get('/appointments/available', { params: date ? { date } : undefined })).data,
   list: async () => (await api.get('/appointments')).data,
+  downloadTicket: async (id: string) => (await api.get<Blob>(`/appointments/${id}/ticket`, { responseType: 'blob' })).data,
   book: async (payload: { slotId: string; requestId?: string; notes?: string }) => (await api.post('/appointments', payload)).data,
   cancel: async (id: string) => (await api.delete(`/appointments/${id}`)).data,
   listForAdmin: async () => (await api.get('/appointments/admin')).data,

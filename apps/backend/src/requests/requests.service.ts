@@ -510,12 +510,20 @@ export class RequestsService {
       document.moveDown(2);
       const stamp = marks.find((mark) => mark.kind === 'STAMP');
       const signature = marks.find((mark) => mark.kind === 'SIGNATURE');
-      try {
-        if (stamp && existsSync(stamp.storagePath)) document.image(stamp.storagePath, { fit: [120, 80] });
-      } catch { }
-      try {
-        if (signature && existsSync(signature.storagePath)) document.image(signature.storagePath, { fit: [140, 80], align: 'right' });
-      } catch { }
+      const signaturePath = signature && existsSync(signature.storagePath) ? signature.storagePath : null;
+      const stampPath = stamp && existsSync(stamp.storagePath) ? stamp.storagePath : null;
+      if (signaturePath || stampPath) {
+        if (document.y + 140 > document.page.height - document.page.margins.bottom) document.addPage();
+        const markY = document.y;
+        const rightEdge = document.page.width - document.page.margins.right;
+        try {
+          if (signaturePath) document.image(signaturePath, rightEdge - 140, markY, { fit: [140, 80] });
+        } catch { }
+        try {
+          if (stampPath) document.image(stampPath, rightEdge - 120, markY + 60, { fit: [120, 80] });
+        } catch { }
+        document.y = markY + 140;
+      }
       document.moveDown(3).fontSize(9).text('Document généré par la plateforme e-Servisy d’Ihosy. Toute vérification doit être effectuée auprès du service émetteur.', { align: 'center' });
       document.end();
     });

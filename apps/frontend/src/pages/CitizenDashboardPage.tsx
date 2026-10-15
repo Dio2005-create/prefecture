@@ -91,7 +91,7 @@ export function CitizenDashboardPage() {
         <div className="panel" style={{ padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h3 style={{ margin: 0 }}>{t('Suivi rapide')}</h3>
-            <NavLink to="/front/demandes" className="text-link">{t('Mes demandes')}</NavLink>
+            <NavLink to="/front/demandes" className="text-link">{t('Mes demandes le plus recent')}</NavLink>
           </div>
           {loadingRequests ? <p>{t('Chargement…')}</p> : (
             <div style={{ display: 'grid', gap: 10 }}>

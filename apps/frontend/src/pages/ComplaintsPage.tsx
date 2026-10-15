@@ -5,6 +5,7 @@ import { Download, FileWarning, ShieldCheck } from 'lucide-react';
 import { usePreferences } from '../preferences';
 import { complaintService, prefectureService } from '../services/api';
 import type { CitizenComplaint } from '../types';
+import { Pagination } from '../components/ui';
 
 async function errorMessage(error: unknown, fallback: string) {
   if (axios.isAxiosError(error)) {
@@ -45,6 +46,7 @@ export function CitizenComplaintsPage() {
   const [details, setDetails] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState('');
+  const [complaintPage, setComplaintPage] = useState(1);
   const { data: documents = [], isLoading: documentsLoading, isError: documentsError } = useQuery({
     queryKey: ['complaint-documents'],
     queryFn: complaintService.eligibleDocuments,
@@ -53,6 +55,8 @@ export function CitizenComplaintsPage() {
     queryKey: ['citizen-complaints'],
     queryFn: complaintService.list,
   });
+  const recentComplaints = [...complaints].sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime());
+  const visibleComplaints = recentComplaints.slice((complaintPage - 1) * 5, complaintPage * 5);
   const createMutation = useMutation({
     mutationFn: complaintService.create,
     onSuccess: async () => {
@@ -61,6 +65,7 @@ export function CitizenComplaintsPage() {
       setDetails('');
       setFile(null);
       setError('');
+      setComplaintPage(1);
       await client.invalidateQueries({ queryKey: ['citizen-complaints'] });
       await client.invalidateQueries({ queryKey: ['notifications'] });
     },
@@ -132,7 +137,7 @@ export function CitizenComplaintsPage() {
         <p className="error-message" role="alert">{t('Impossible de charger vos réclamations.')}</p>
       ) : complaints.length === 0 ? (
         <div className="empty-state"><FileWarning size={26} /><span>{t('Vous n’avez pas encore envoyé de réclamation.')}</span></div>
-      ) : <div className="complaint-list">{complaints.map((complaint) => <article className="recent-row" key={complaint.id}>
+      ) : <><div className="complaint-list">{visibleComplaints.map((complaint) => <article className="recent-row" key={complaint.id}>
         <ShieldCheck size={18} />
         <span>
           <strong>{complaint.documentRequest.title ?? complaint.documentRequest.service.nameFr}</strong>
@@ -142,7 +147,7 @@ export function CitizenComplaintsPage() {
         </span>
         <span className={`status ${complaint.status === 'RESOLVED' ? 'valide' : complaint.status === 'REJECTED' ? 'erreur' : 'en_traitement'}`}>{t(complaintStatusLabels[complaint.status])}</span>
         {complaint.status === 'RESOLVED' && <button className="button small" type="button" onClick={() => void downloadDocument(complaint.documentRequest.id, complaint.documentRequest.title ?? 'document-corrige')}><Download size={14} /> {t('Télécharger le document corrigé')}</button>}
-      </article>)}</div>}
+      </article>)}</div><Pagination page={complaintPage} totalPages={Math.max(1, Math.ceil(recentComplaints.length / 5))} onChange={setComplaintPage} /></>}
     </section>
   </section>;
 }
@@ -155,10 +160,13 @@ export function AdminComplaintsPage() {
   const originalCorrections = useRef<Record<string, string>>({});
   const [response, setResponse] = useState('');
   const [error, setError] = useState('');
+  const [complaintPage, setComplaintPage] = useState(1);
   const { data: complaints = [], isLoading, isError } = useQuery({
     queryKey: ['admin-complaints'],
     queryFn: complaintService.listAdmin,
   });
+  const recentComplaints = [...complaints].sort((first, second) => new Date(second.createdAt).getTime() - new Date(first.createdAt).getTime());
+  const visibleComplaints = recentComplaints.slice((complaintPage - 1) * 5, complaintPage * 5);
   const selected = complaints.find((item) => item.id === selectedId);
   useEffect(() => {
     if (!selected) return;
@@ -206,11 +214,11 @@ export function AdminComplaintsPage() {
     {isLoading ? <p>{t('Chargement...')}</p> : isError ? <p className="error-message" role="alert">{t('Impossible de charger les réclamations.')}</p> : complaints.length === 0 ? (
       <div className="empty-state"><FileWarning size={26} /><span>{t('Aucune réclamation à traiter.')}</span></div>
     ) : <div className="complaint-admin-layout">
-      <div className="complaint-admin-list">{complaints.map((complaint) => <button className={`complaint-admin-item${selectedId === complaint.id ? ' is-selected' : ''}`} type="button" key={complaint.id} onClick={() => setSelectedId(complaint.id)}>
+      <div><div className="complaint-admin-list">{visibleComplaints.map((complaint) => <button className={`complaint-admin-item${selectedId === complaint.id ? ' is-selected' : ''}`} type="button" key={complaint.id} onClick={() => setSelectedId(complaint.id)}>
         <strong>{complaint.documentRequest.title ?? complaint.documentRequest.service.nameFr}</strong>
         <small>{complaint.user?.nom ?? complaint.user?.email ?? complaint.user?.phone} · {t(complaintStatusLabels[complaint.status])}</small>
         <small>{complaint.reason}</small>
-      </button>)}</div>
+      </button>)}</div><Pagination page={complaintPage} totalPages={Math.max(1, Math.ceil(recentComplaints.length / 5))} onChange={setComplaintPage} /></div>
       {selected && <section className="complaint-admin-detail">
         <h2>{t('Réclamation')} — {selected.documentRequest.title ?? selected.documentRequest.service.nameFr}</h2>
         <p><strong>{t('Citoyen')} :</strong> {selected.user?.nom ?? selected.user?.email ?? selected.user?.phone}</p>

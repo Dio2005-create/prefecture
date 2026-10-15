@@ -11,7 +11,11 @@ export function CitizenDocumentsPage() {
   const { t, language } = usePreferences();
   const { data: requests = [], isLoading } = useQuery({ queryKey: ['citizen-requests'], queryFn: prefectureService.listRequests, refetchInterval: 3000 });
   const [downloadError, setDownloadError] = useState('');
-  const approved = requests.filter((request: { status: string }) => request.status === 'APPROVED');
+  const [page, setPage] = useState(1);
+  const approved = requests
+    .filter((request: { status: string }) => request.status === 'APPROVED')
+    .sort((first, second) => new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime());
+  const visible = approved.slice((page - 1) * 5, page * 5);
   const download = async (requestId: string) => {
     setDownloadError('');
     try {
@@ -39,10 +43,10 @@ export function CitizenDocumentsPage() {
       }
     }
   };
-  return <section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Espace citoyen')}</p><h1>{t('Mes documents délivrés')}</h1><p>{t('Retrouvez ici les documents validés par la Préfecture d’Ihosy.')}</p>{downloadError && <p className="error-message">{t(downloadError)}</p>}{isLoading ? <p>{t('Chargement...')}</p> : approved.length === 0 ? <div className="empty-state"><FileText size={28} /><span>{t('Aucun document délivré pour le moment.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{approved.map((request: { id: string; title?: string; type: string; service?: { nameFr: string; nameMg: string } }) => {
+  return <section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Espace citoyen')}</p><h1>{t('Mes documents délivrés')}</h1><p>{t('Retrouvez ici les documents validés par la Préfecture d’Ihosy.')}</p>{downloadError && <p className="error-message">{t(downloadError)}</p>}{isLoading ? <p>{t('Chargement...')}</p>   : approved.length === 0 ? <div className="empty-state"><FileText size={28} /><span>{t('Aucun document délivré pour le moment.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{visible.map((request: { id: string; title?: string; type: string; service?: { nameFr: string; nameMg: string } }) => {
     const isCin = ['CIN_REQUEST', 'CIN_RENEWAL'].includes(request.type);
     return <div className="recent-row" key={request.id}><FileText size={18} /><span><strong>{request.title ?? (language === 'mg' ? request.service?.nameMg : request.service?.nameFr)}</strong><small>{t(isCin ? 'Prise des empreintes requise : prenez rendez-vous pour le retrait au guichet.' : 'PDF administratif disponible')}</small></span>{!isCin && <button className="button small" onClick={() => void download(request.id)}>{t('Télécharger')}</button>}</div>;
-  })}</div>}</section>;
+  })}</div>}<Pagination page={page} totalPages={Math.max(1, Math.ceil(approved.length / 5))} onChange={setPage} /></section>;
 }
 
 export function AssociationAndOngPage() {
@@ -479,6 +483,15 @@ export function AdminAppointmentsPage() {
   const { t, language } = usePreferences();
   const client = useQueryClient();
   const { data: appointments = [], isLoading } = useQuery({ queryKey: ['admin-appointments'], queryFn: appointmentService.listForAdmin, refetchInterval: 3000 });
+  const [appointmentPage, setAppointmentPage] = useState(1);
+  const [availabilityPage, setAvailabilityPage] = useState(1);
+  const [slotPage, setSlotPage] = useState(1);
+  const sortedAppointments = [...appointments].sort((first, second) => new Date(second.startsAt).getTime() - new Date(first.startsAt).getTime());
+  const appointmentTotalPages = Math.ceil(sortedAppointments.length / 5);
+  const visibleAppointments = sortedAppointments.slice((appointmentPage - 1) * 5, appointmentPage * 5);
+  useEffect(() => {
+    if (appointmentTotalPages > 0 && appointmentPage > appointmentTotalPages) setAppointmentPage(appointmentTotalPages);
+  }, [appointmentPage, appointmentTotalPages]);
   const { data: slots = [], isLoading: slotsLoading } = useQuery<Array<{ id: string; startsAt: string; endsAt: string; office: string; isActive: boolean; appointments: Array<{ id: string }> }>>({
     queryKey: ['admin-appointment-slots'],
     queryFn: appointmentService.listSlotsForAdmin,
@@ -498,6 +511,16 @@ export function AdminAppointmentsPage() {
     queryFn: appointmentService.listAvailabilityForAdmin,
     refetchInterval: 10000,
   });
+  const availabilityTotalPages = Math.ceil(availability.length / 5);
+  const visibleAvailability = availability.slice((availabilityPage - 1) * 5, availabilityPage * 5);
+  const slotTotalPages = Math.ceil(slots.length / 5);
+  const visibleSlots = slots.slice((slotPage - 1) * 5, slotPage * 5);
+  useEffect(() => {
+    if (availabilityTotalPages > 0 && availabilityPage > availabilityTotalPages) setAvailabilityPage(availabilityTotalPages);
+  }, [availabilityPage, availabilityTotalPages]);
+  useEffect(() => {
+    if (slotTotalPages > 0 && slotPage > slotTotalPages) setSlotPage(slotTotalPages);
+  }, [slotPage, slotTotalPages]);
   const [slotDate, setSlotDate] = useState('');
   const [slotStart, setSlotStart] = useState('');
   const [slotEnd, setSlotEnd] = useState('17:00');
@@ -566,16 +589,17 @@ export function AdminAppointmentsPage() {
       {slotErrorMessage && <p className="error-message">{t(slotErrorMessage)}</p>}
       <h3>{t('Horaires configurés')}</h3>
       {availability.length === 0 ? <p>{t('Aucun horaire configuré.')}</p> : <div style={{ display: 'grid', gap: 8 }}>
-        {availability.map((day) => <div className="recent-row" key={day.id}>
+        {visibleAvailability.map((day) => <div className="recent-row" key={day.id}>
           <CalendarDays size={18} />
           <span><strong>{new Date(`${day.date.slice(0, 10)}T00:00:00.000Z`).toLocaleDateString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })} · {day.startTime}–{day.endTime}</strong>
             <small>{day.slotDurationMinutes} {t('min')} · {day.breakStart && day.breakEnd ? `${t('Pause')} ${day.breakStart}–${day.breakEnd}` : t('Sans pause')} · {day.office}</small>
           </span>
         </div>)}
       </div>}
+      <Pagination page={availabilityPage} totalPages={availabilityTotalPages} onChange={setAvailabilityPage} />
       <h3>{t('Créneaux configurés')}</h3>
       {slotsLoading ? <p>{t('Chargement...')}</p> : slots.length === 0 ? <p>{t('Aucun créneau configuré.')}</p> : <div style={{ display: 'grid', gap: 8 }}>
-        {slots.map((slot) => <div className="recent-row" key={slot.id}>
+        {visibleSlots.map((slot) => <div className="recent-row" key={slot.id}>
           <CalendarDays size={18} />
           <span><strong>{new Date(slot.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })} – {new Date(slot.endsAt).toLocaleTimeString(language === 'mg' ? 'mg-MG' : 'fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Indian/Antananarivo' })}</strong>
             <small>{slot.office} · {slot.appointments.length ? t('Réservé') : slot.isActive ? t('Disponible') : t('Désactivé')}</small>
@@ -585,11 +609,13 @@ export function AdminAppointmentsPage() {
           </button>
         </div>)}
       </div>}
+      {!slotsLoading && <Pagination page={slotPage} totalPages={slotTotalPages} onChange={setSlotPage} />}
     </section>
     <h2>{t('Rendez-vous réservés')}</h2>
-    {isLoading ? <p>{t('Chargement...')}</p> : appointments.length === 0 ? <div className="empty-state"><CalendarDays size={28} /><span>{t('Aucun rendez-vous enregistré.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{appointments.map((appointment: { id: string; startsAt: string; endsAt: string; office: string; status: string; user?: { nom?: string | null; email: string }; request?: { type: string; title: string | null } | null }) => {
+    {isLoading ? <p>{t('Chargement...')}</p> : appointments.length === 0 ? <div className="empty-state"><CalendarDays size={28} /><span>{t('Aucun rendez-vous enregistré.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{visibleAppointments.map((appointment: { id: string; startsAt: string; endsAt: string; office: string; status: string; user?: { nom?: string | null; email: string }; request?: { type: string; title: string | null } | null }) => {
       const isFingerprintAppointment = appointment.request && ['CIN_REQUEST', 'CIN_RENEWAL'].includes(appointment.request.type);
       return <div className="recent-row" key={appointment.id}><CalendarDays size={18} /><span><strong>{new Date(appointment.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })}</strong><small>{appointment.user?.nom ?? appointment.user?.email} · {t(appointment.office)} · {t(appointment.status)}{isFingerprintAppointment ? ` · ${t('Empreintes digitales — ')}${appointment.request?.title ?? t(appointment.request?.type ?? '')}` : ''}</small></span>{appointment.status === 'PENDING' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small primary" onClick={() => void update(appointment.id, 'BOOKED')}>{t('Confirmer')}</button><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button></span>}{appointment.status === 'BOOKED' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button><button className="button small appointment-complete" disabled={new Date(appointment.endsAt) > new Date()} onClick={() => void update(appointment.id, 'COMPLETED')}>{t(isFingerprintAppointment ? 'Empreintes prises / remis au guichet' : 'Terminer')}</button></span>}</div>;
     })}</div>}
+    <Pagination page={appointmentPage} totalPages={appointmentTotalPages} onChange={setAppointmentPage} />
   </section>;
 }
