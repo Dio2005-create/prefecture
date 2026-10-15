@@ -176,6 +176,11 @@ export const adminService = {
   deactivateTemplate: async (id: string) => (await api.post(`/admin/templates/${id}/deactivate`)).data,
   deleteTemplate: async (id: string) => (await api.delete(`/admin/templates/${id}`)).data,
   listMarks: async () => (await api.get<Array<{ id: string; name: string; kind: string; mimeType?: string; isActive: boolean }>>('/admin/marks')).data,
+  previewMark: async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return (await api.post<Blob>('/admin/marks/preview', form, { responseType: 'blob' })).data;
+  },
   uploadMark: async (file: File, fields: { name: string; kind: string }) => {
     const form = new FormData();
     form.append('file', file);

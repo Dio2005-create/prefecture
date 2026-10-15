@@ -1,9 +1,11 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Header, Param, Patch, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { readFile, unlink } from 'node:fs/promises';
 import { AuthGuard } from '../auth/auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { AgentService } from './agent.service';
+import { extractOfficialMark } from './official-mark-image';
 import type { RequestStatus } from '@prisma/client';
 
 @Controller('admin')
@@ -55,13 +57,34 @@ export class AgentController {
     return this.agentService.listMarks();
   }
 
+  @Post('marks/preview')
+  @Header('Content-Type', 'image/png')
+  @UseInterceptors(FileInterceptor('file', { dest: process.env.UPLOAD_DIR ?? './uploads', limits: { fileSize: 10 * 1024 * 1024 } }))
+  async previewMark(@UploadedFile() file: { path: string; mimetype?: string } | undefined) {
+    if (!file) throw new BadRequestException('Sélectionnez une image PNG ou JPEG.');
+    try {
+      if (!['image/png', 'image/jpeg'].includes(file.mimetype ?? '')) {
+        throw new BadRequestException('Le fichier doit être une image PNG ou JPEG.');
+      }
+      return await extractOfficialMark(await readFile(file.path));
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      const message = error instanceof Error ? error.message : 'Erreur inconnue';
+      throw new BadRequestException(`L’extraction de l’image a échoué : ${message}`);
+    } finally {
+      await unlink(file.path);
+    }
+  }
+
   @Post('marks')
-  @UseInterceptors(FileInterceptor('file', { dest: process.env.UPLOAD_DIR ?? './uploads' }))
+  @UseInterceptors(FileInterceptor('file', { dest: process.env.UPLOAD_DIR ?? './uploads', limits: { fileSize: 10 * 1024 * 1024 } }))
   saveMark(
     @UploadedFile() file: { path: string; mimetype?: string } | undefined,
     @Body() body: { name: string; kind: string },
   ) {
     if (!file || !body.name || !body.kind) throw new BadRequestException('Le nom, le type et le fichier sont obligatoires');
+    if (!['image/png', 'image/jpeg'].includes(file.mimetype ?? '')) throw new BadRequestException('Le cachet ou la signature doit être une image PNG ou JPEG.');
+    if (!['STAMP', 'SIGNATURE'].includes(body.kind)) throw new BadRequestException('Le type doit être un cachet ou une signature.');
     return this.agentService.createMark({ name: body.name, kind: body.kind, storagePath: file.path, mimeType: file.mimetype });
   }
 

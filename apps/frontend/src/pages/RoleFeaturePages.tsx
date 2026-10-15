@@ -371,14 +371,63 @@ export function AdminStampAndSignaturePage() {
   const [name, setName] = useState('');
   const [kind, setKind] = useState('STAMP');
   const [file, setFile] = useState<File | null>(null);
+  const [processedFile, setProcessedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [extractionError, setExtractionError] = useState('');
+  const [extracting, setExtracting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const upload = async () => {
-    if (!name.trim() || !file) return;
+  const [fileInputKey, setFileInputKey] = useState(0);
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+  const resetUpload = () => {
+    setFile(null);
+    setProcessedFile(null);
+    setPreviewUrl('');
+    setExtractionError('');
+    setFileInputKey((key) => key + 1);
+  };
+  const selectFile = (nextFile: File | null) => {
+    setFile(nextFile);
+    setProcessedFile(null);
+    setPreviewUrl('');
+    setExtractionError('');
+  };
+  const previewExtraction = async () => {
+    if (!file) return;
+    setExtracting(true);
+    setExtractionError('');
+    setProcessedFile(null);
+    setPreviewUrl('');
+    try {
+      const png = await adminService.previewMark(file);
+      setProcessedFile(new File([png], `${file.name.replace(/\.[^.]+$/, '')}-nettoye.png`, { type: 'image/png' }));
+      setPreviewUrl(URL.createObjectURL(png));
+    } catch (error) {
+      const message = axios.isAxiosError(error) && error.response?.data instanceof Blob
+        ? await error.response.data.text()
+        : '';
+      let clearMessage = 'L’extraction a échoué. Vous pouvez réessayer ou enregistrer l’image originale.';
+      if (message) {
+        try {
+          const payload = JSON.parse(message) as { message?: string };
+          if (payload.message) clearMessage = payload.message;
+        } catch {
+          clearMessage = 'L’extraction a échoué. Vous pouvez réessayer ou enregistrer l’image originale.';
+        }
+      }
+      setExtractionError(clearMessage);
+    } finally {
+      setExtracting(false);
+    }
+  };
+  const upload = async (image: File) => {
+    if (!name.trim()) return;
     setUploading(true);
     try {
-      await adminService.uploadMark(file, { name: name.trim(), kind });
-      setName(''); setFile(null); await client.invalidateQueries({ queryKey: ['admin-marks'] });
+      await adminService.uploadMark(image, { name: name.trim(), kind });
+      setName(''); resetUpload(); await client.invalidateQueries({ queryKey: ['admin-marks'] });
       notify('success', t('Élément officiel importé.'));
     } catch {
       notify('error', t('Impossible d’importer cet élément officiel.'));
@@ -399,9 +448,19 @@ export function AdminStampAndSignaturePage() {
     <div style={{ display: 'grid', gap: 10, marginTop: 18, padding: 14, border: '1px solid var(--color-border)', borderRadius: 8 }}>
       <input value={name} onChange={(event) => setName(event.target.value)} placeholder={t('Nom du cachet ou de la signature')} style={{ padding: 10 }} />
       <select value={kind} onChange={(event) => setKind(event.target.value)} style={{ padding: 10 }}><option value="STAMP">{t('Cachet')}</option><option value="SIGNATURE">{t('Signature')}</option></select>
-      <input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+      <input key={fileInputKey} type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" onChange={(event) => selectFile(event.target.files?.[0] ?? null)} />
       {file && <small>{file.name}</small>}
-      <button className="button primary" onClick={() => void upload()} disabled={!name.trim() || !file || uploading}>{t(uploading ? 'Importation...' : 'Importer le fichier')}</button>
+      {file && !processedFile && <button className="button primary" onClick={() => void previewExtraction()} disabled={extracting || uploading}>{t(extracting ? 'Nettoyage de l’image...' : 'Extraire et prévisualiser')}</button>}
+      {extracting && <p role="status">{t('Suppression du fond et préparation de l’aperçu...')}</p>}
+      {extractionError && <div role="alert" className="error-message">{t(extractionError)}<div className="mark-actions" style={{ justifyContent: 'flex-start', marginTop: 8 }}><button className="button muted" onClick={() => file && void previewExtraction()} disabled={extracting || uploading}>{t('Réessayer')}</button><button className="button" onClick={() => file && void upload(file)} disabled={!name.trim() || uploading}>{t('Utiliser l’image originale')}</button><button className="button" onClick={resetUpload}>{t('Choisir une autre image')}</button></div></div>}
+      {processedFile && previewUrl && <div style={{ display: 'grid', gap: 8, padding: 12, border: '1px solid var(--color-border)', borderRadius: 8 }}>
+        <strong>{t('Aperçu de l’image avec fond transparent')}</strong>
+        <img src={previewUrl} alt={t('Aperçu de la signature ou du cachet extrait')} style={{ maxWidth: 280, maxHeight: 180, objectFit: 'contain', justifySelf: 'start', backgroundColor: '#f1f1f1', backgroundImage: 'linear-gradient(45deg,#ddd 25%,transparent 25%),linear-gradient(-45deg,#ddd 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ddd 75%),linear-gradient(-45deg,transparent 75%,#ddd 75%)', backgroundSize: '16px 16px', backgroundPosition: '0 0,0 8px,8px -8px,-8px 0' }} />
+        <div className="mark-actions" style={{ justifyContent: 'flex-start' }}>
+          <button className="button primary" onClick={() => void upload(processedFile)} disabled={!name.trim() || uploading}>{t(uploading ? 'Enregistrement...' : 'Valider et enregistrer')}</button>
+          <button className="button" onClick={resetUpload} disabled={uploading}>{t('Recommencer')}</button>
+        </div>
+      </div>}
     </div>
     <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
       {isLoading ? <p>{t('Chargement...')}</p> : marks.map((mark) => (

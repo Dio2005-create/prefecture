@@ -1,0 +1,115 @@
+PRESENTATION DE L'APPLICATION
+Texte de base pour le mémoire
+Plateforme e-Servisy d'Ihosy
+
+1. Présentation générale
+
+e-Servisy d'Ihosy est une application web destinée à faciliter les échanges entre les citoyens et l'administration préfectorale. Elle propose un espace citoyen pour effectuer et suivre des démarches, ainsi qu'un espace administratif pour instruire les dossiers et gérer les services associés.
+
+L'application vise à réduire les déplacements et les échanges papier lorsqu'une démarche peut être préparée ou suivie en ligne. Elle centralise également les informations utiles au traitement des demandes et à leur traçabilité.
+
+2. Objectifs de l'application
+
+Les principaux objectifs sont :
+
+- mettre à disposition des citoyens les démarches et informations utiles ;
+- permettre la création et le suivi de dossiers administratifs ;
+- faciliter la transmission de pièces justificatives ;
+- organiser l'instruction des dossiers par les agents autorisés ;
+- améliorer la communication par des notifications et des statuts visibles ;
+- gérer les rendez-vous nécessaires à certains services ;
+- structurer la conservation et la consultation des documents administratifs ;
+- proposer des outils de recherche et d'assistance liés au fonds documentaire.
+
+3. Profils et droits d'accès
+
+L'application distingue plusieurs profils. Le citoyen accède à ses propres informations et dossiers. L'administrateur dispose des outils nécessaires au traitement administratif et à la configuration de l'application. Le superadministrateur bénéficie, en plus, de droits de gestion spécifiques, notamment la création de comptes administrateurs.
+
+Les espaces sont protégés par authentification. Les fonctionnalités affichées et les opérations accessibles dépendent du rôle du compte connecté. Cette séparation évite de confondre les actions réservées à l'administration avec celles accessibles au citoyen.
+
+4. Espace citoyen
+
+4.1. Tableau de bord
+
+Le tableau de bord présente une synthèse de l'activité du citoyen : nombre de dossiers, demandes en cours, dossiers validés et dossiers rejetés. Il met également en évidence les services disponibles et un aperçu des demandes récentes.
+
+4.2. Démarches administratives
+
+Le citoyen choisit un service, complète le formulaire correspondant et fournit les pièces justificatives requises. Les champs et les justificatifs attendus dépendent du type de démarche. Le dossier peut ensuite être suivi à travers les états d'instruction affichés dans l'application.
+
+4.3. Documents
+
+L'espace « Mes documents » permet de retrouver les documents délivrés associés aux demandes du citoyen et de télécharger les fichiers disponibles.
+
+4.4. Rendez-vous
+
+Le citoyen consulte les créneaux disponibles, sélectionne une date et un créneau, puis suit l'état de sa réservation. Lorsqu'un rendez-vous est confirmé, un ticket téléchargeable fournit les renseignements utiles pour se présenter au service concerné.
+
+4.5. Réclamations
+
+Le citoyen peut transmettre une réclamation à propos d'un document délivré, en préciser le motif et joindre un justificatif. Il peut ensuite consulter l'avancement de son signalement et la réponse de l'administration.
+
+4.6. Informations et assistance
+
+L'espace citoyen donne accès aux informations officielles, aux notifications, à l'assistant et aux réglages personnels disponibles. L'interface prévoit le français et le malagasy. La préférence de langue est mémorisée pour le compte connecté.
+
+5. Espace administratif
+
+5.1. Tableau de bord et pilotage
+
+Le tableau de bord administratif présente des indicateurs de demandes et de comptes utilisateurs. Il fournit une vue synthétique de la charge et de l'évolution de l'activité.
+
+5.2. Instruction des dossiers
+
+Les agents autorisés consultent les dossiers transmis, examinent leurs informations et pièces, puis réalisent les actions permises par leur état : instruction, demande de complément, validation ou rejet. Les changements de statut rendent le suivi plus lisible pour le citoyen.
+
+5.3. Réclamations et rendez-vous
+
+L'administration dispose d'un espace de traitement des réclamations. Elle gère également les horaires, les créneaux et les réservations, notamment la confirmation, le refus et la clôture des rendez-vous.
+
+5.4. Documents et modèles
+
+Les fonctions administratives comprennent la consultation et l'import de documents, la gestion des modèles utilisés pour certaines démarches et la gestion des cachets et signatures officiels appliqués aux documents PDF générés.
+
+5.5. Utilisateurs et paramètres
+
+L'espace administratif permet de consulter les comptes et, selon les autorisations du rôle, de gérer certains accès. Les paramètres configurables couvrent les éléments prévus par l'application, tels que les tarifs et les informations de profil.
+
+6. Parcours représentatifs
+
+Parcours d'une demande :
+
+1. Le citoyen s'authentifie et choisit une démarche.
+2. Il renseigne le formulaire et transmet les pièces demandées.
+3. L'administration consulte et instruit le dossier.
+4. Le statut du dossier évolue au fil du traitement.
+5. Le citoyen suit son dossier et accède au document délivré lorsqu'il est disponible.
+
+Parcours d'un rendez-vous :
+
+1. Le citoyen choisit un créneau proposé.
+2. L'administration consulte la réservation et la confirme ou la refuse.
+3. Après confirmation, le citoyen télécharge le ticket de rendez-vous.
+4. Le service administratif clôture le rendez-vous une fois le traitement effectué.
+
+7. Principes de réalisation
+
+L'interface est développée en React et TypeScript. Le serveur applicatif expose une API NestJS, et l'accès aux données relationnelles est assuré par Prisma. Les informations métier et les pièces associées sont organisées autour des comptes, demandes, documents, réclamations, rendez-vous, paiements, modèles et notifications.
+
+L'application utilise une interface adaptative, des listes paginées et des retours d'état destinés à faciliter la navigation. Les actions sensibles sont limitées par l'authentification et les rôles.
+
+8. Place de l'intelligence artificielle et des archives
+
+Le projet comprend également un volet de gestion et de recherche documentaire, avec des composants destinés à l'indexation et à la recherche sémantique. Cette orientation permet d'envisager une interrogation plus naturelle du fonds d'archives et une assistance à la consultation.
+
+Dans le mémoire, il convient de distinguer les fonctionnalités effectivement opérationnelles dans la version présentée des fonctions prévues ou en cours d'intégration. En particulier, ne présenter l'OCR, l'extraction automatique ou la classification comme fonctions disponibles que si elles ont été installées, configurées et vérifiées dans l'environnement de démonstration.
+
+9. Apports et limites
+
+L'application apporte un point d'accès centralisé aux démarches, améliore la visibilité de l'avancement des dossiers et donne à l'administration un espace organisé pour les traiter. Elle facilite également la gestion des rendez-vous, des documents délivrés et des réclamations.
+
+La disponibilité de l'application dépend de l'accès au réseau et des services techniques déployés. Les règles administratives, la qualité des données fournies et la validation humaine restent déterminantes pour le traitement des dossiers. L'application accompagne le travail des services sans se substituer à leurs décisions.
+
+10. Conclusion
+
+e-Servisy d'Ihosy met en relation les démarches citoyennes et leur traitement administratif dans une même plateforme. La séparation des espaces, les rôles, le suivi des statuts et la gestion des documents constituent les principes centraux de son fonctionnement. La solution fournit ainsi un cadre numérique pour rendre les échanges entre le citoyen et la préfecture plus accessibles, structurés et traçables.

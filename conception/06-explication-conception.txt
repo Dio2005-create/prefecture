@@ -1,0 +1,93 @@
+EXPLICATION DES DOCUMENTS DE CONCEPTION
+Plateforme e-Servisy d'Ihosy
+
+1. Objet de ce document
+
+Ce document explique, avec des termes simples, les livrables de conception réunis dans le dossier conception. Il sert de guide de lecture pour comprendre comment les besoins de la préfecture sont traduits en données, en traitements et en organisation.
+
+2. Démarche de conception
+
+La conception s'appuie sur Merise. Cette méthode distingue progressivement les données manipulées par le système des traitements réalisés par les acteurs.
+
+- Le niveau conceptuel décrit le besoin métier sans imposer de technologie.
+- Le niveau logique organise les données sous forme de relations, de tables et de clés.
+- Le niveau organisationnel décrit les acteurs et la répartition des opérations.
+- Le niveau physique correspond à la réalisation technique de l'application.
+
+Cette progression limite les ambiguïtés : les règles métier sont d'abord formulées, puis les structures de données et les composants techniques sont construits pour les appliquer.
+
+3. Rôle des livrables du dossier
+
+3.1. 01-methode-merise.md
+
+Ce fichier présente les niveaux de Merise utilisés et précise le périmètre fonctionnel. Il sert d'introduction aux diagrammes et aux modèles suivants.
+
+3.2. 02-dictionnaire-des-donnees.md
+
+Le dictionnaire définit les principales données manipulées par l'application. Il précise notamment le rôle des identifiants de compte, des rôles, des demandes, des pièces jointes, des rendez-vous, des paiements, des documents et des paramètres.
+
+Il facilite la compréhension des champs de la base de données et réduit les différences d'interprétation entre les termes métier et les noms techniques.
+
+3.3. 03-regles-de-gestion.md
+
+Les règles de gestion énoncent les contraintes qui doivent être respectées par l'application. Elles décrivent par exemple les rôles, les autorisations, les transitions possibles d'un dossier, les pièces requises, les rendez-vous et la gestion des modèles.
+
+Les règles sont les invariants fonctionnels du système : les écrans et les services applicatifs doivent les appliquer de manière cohérente.
+
+3.4. 04-diagramme-de-flux.mermaid
+
+Le diagramme de flux présente les échanges entre les utilisateurs, l'application et ses traitements. Il permet de suivre les grandes étapes d'un processus, depuis l'action initiatrice jusqu'au résultat ou à la réponse transmise.
+
+3.5. 05.5.1-mcd.mermaid — Modèle conceptuel des données
+
+Le MCD représente les objets métier et les relations entre eux, sans détailler leur stockage dans une base particulière. Il répond aux questions : quelles informations l'application doit-elle connaître, et comment ces informations sont-elles liées ?
+
+On y retrouve des notions telles que les utilisateurs, les demandes, les documents, les pièces jointes et les rendez-vous. Une relation matérialise une association métier entre ces objets.
+
+3.6. 05.5.2-mld.mermaid — Modèle logique des données
+
+Le MLD transforme le modèle conceptuel en structures relationnelles. Les entités deviennent des tables; les identifiants deviennent des clés primaires; les relations sont représentées par des clés étrangères ou des tables d'association.
+
+Cette étape prépare la création de la base relationnelle et rend explicites les liens nécessaires aux requêtes.
+
+3.7. 05.5.3-mct.mermaid — Modèle conceptuel des traitements
+
+Le MCT décrit les événements métier, les opérations exécutées et les résultats produits. Il aide à formaliser des scénarios tels que la soumission d'une demande, son instruction, sa validation ou le traitement d'une réclamation.
+
+Il représente le comportement attendu sans dépendre de l'interface ou du langage de programmation.
+
+3.8. 05.5.4-mot.mermaid — Modèle organisationnel des traitements
+
+Le MOT complète le MCT en associant les opérations aux acteurs et à leur contexte d'exécution. Il distingue notamment ce qui relève du citoyen, de l'agent administratif ou de l'administrateur.
+
+Il aide à vérifier que chaque action dispose d'un responsable et que les opérations réservées à l'administration ne sont pas attribuées au citoyen.
+
+4. Lecture d'ensemble
+
+Les livrables sont complémentaires :
+
+- Le dictionnaire explique les informations.
+- Le MCD explique les concepts et leurs liens.
+- Le MLD prépare l'organisation relationnelle de la base.
+- Le MCT explique les traitements métier.
+- Le MOT indique qui réalise ces traitements et dans quel cadre.
+- Les règles de gestion fixent les contraintes communes à respecter.
+- Le diagramme de flux donne une vue transversale des échanges.
+
+Un exemple de parcours est la demande administrative :
+
+1. Le citoyen choisit une démarche et renseigne les informations demandées.
+2. Il transmet son dossier et, si nécessaire, ses pièces justificatives.
+3. L'administration consulte le dossier et le fait évoluer selon son état d'instruction.
+4. Le citoyen suit les changements de statut et reçoit les notifications prévues.
+5. Une fois la demande validée, le document correspondant peut être délivré selon le processus prévu.
+
+5. Passage vers la réalisation technique
+
+Dans l'application, l'interface web est réalisée avec React et TypeScript. L'API métier est réalisée avec NestJS et utilise Prisma pour accéder aux données relationnelles. Des services distincts sont prévus pour les fonctions d'intelligence artificielle et de recherche documentaire.
+
+La conception Merise exprime d'abord les besoins et les relations métier. Les détails d'implémentation peuvent évoluer sans modifier les notions fonctionnelles fondamentales, à condition de préserver les règles et les résultats attendus.
+
+6. Point de vigilance
+
+Les diagrammes représentent une conception et doivent être lus avec les règles de gestion et l'application réalisée. Si une fonctionnalité évolue, il convient de mettre à jour les documents de conception concernés afin que la documentation reste cohérente avec le système.
