@@ -83,6 +83,8 @@ const malagasy: Record<string, string> = {
   'Copie du document où se trouve l’erreur (PDF, JPG ou PNG, 10 Mo maximum)': 'Dika mitovy amin’ilay taratasy misy hadisoana (PDF, JPG na PNG, 10 Mo fara-fahabetsany)',
   'Un code de vérification sera envoyé à l’adresse email associée à votre compte citoyen ou administrateur.': 'Hisy kaody fanamarinana halefa amin’ny adiresy mailaka mifandray amin’ny kaontinao olom-pirenena na mpandrindra.',
   'Connexion Internet indisponible': 'Tsy misy ny fifandraisana Internet',
+  'Connexion interrompue': 'Tapaka ny fifandraisana',
+  'Vérifiez votre connexion Internet puis réessayez. Si elle fonctionne déjà, le service est peut-être temporairement indisponible.': 'Hamarino ny fifandraisana Internet dia andramo indray. Raha mandeha ny Internet, mety tsy misy vetivety ilay tolotra.',
   'Rétablissez votre connexion Internet puis réessayez.': 'Avereno ny fifandraisana Internet dia andramo indray.',
   'Page introuvable': 'Tsy hita ny pejy',
   'La page demandée n’existe pas ou a été déplacée.': 'Tsy misy intsony na nafindra ilay pejy notadiavina.',

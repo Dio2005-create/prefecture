@@ -53,6 +53,10 @@ export function LoginPage() {
         setInfo(t(result.message));
         setFlow('forgot-code');
       } catch (requestError) {
+        if (axios.isAxiosError(requestError) && (requestError.response?.status === 503 || !requestError.response)) {
+          window.dispatchEvent(new Event('archives:connection-error'));
+          return;
+        }
         setError(getErrorMessage(requestError, t('Impossible d’envoyer le code de réinitialisation.')));
       }
       return;

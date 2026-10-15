@@ -317,7 +317,7 @@ export class AuthService {
     } catch (error) {
       await this.prisma.passwordResetOtp.update({ where: { id: otp.id }, data: { consumedAt: new Date() } });
       this.logger.error('Failed to send password reset code', error instanceof Error ? error.stack : String(error));
-      throw new ServiceUnavailableException('Le code de vérification ne peut pas être envoyé pour le moment. Réessayez plus tard.');
+      throw new ServiceUnavailableException('Le service d’envoi du code est momentanément inaccessible. Vérifiez votre connexion Internet puis réessayez.');
     }
     return { success: true, message: 'Un code de vérification a été envoyé à votre adresse email.' };
   }

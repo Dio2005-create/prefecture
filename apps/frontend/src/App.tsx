@@ -33,14 +33,14 @@ import { PreferencesProvider, usePreferences } from './preferences';
 
 const queryClient = new QueryClient();
 
-function ConnectionStatusPage({ notFound = false }: { notFound?: boolean }) {
+function ConnectionStatusPage({ notFound = false, connectionLost = false }: { notFound?: boolean; connectionLost?: boolean }) {
   const { t } = usePreferences();
   return <main className="status-page">
     <section className="status-page-card">
-      <p className="status-page-code">{notFound ? '404' : t('Hors ligne')}</p>
-      <h1>{t(notFound ? 'Page introuvable' : 'Connexion Internet indisponible')}</h1>
-      <p>{t(notFound ? 'La page demandée n’existe pas ou a été déplacée.' : 'Rétablissez votre connexion Internet puis réessayez.')}</p>
-      {notFound
+      <p className="status-page-code">404</p>
+      <h1>{t(connectionLost ? 'Connexion interrompue' : notFound ? 'Page introuvable' : 'Connexion Internet indisponible')}</h1>
+      <p>{t(connectionLost || !notFound ? 'Vérifiez votre connexion Internet puis réessayez. Si elle fonctionne déjà, le service est peut-être temporairement indisponible.' : 'La page demandée n’existe pas ou a été déplacée.')}</p>
+      {notFound && !connectionLost
         ? <Link className="button primary" to="/">{t('Retour à l’accueil')}</Link>
         : <button className="button primary" type="button" onClick={() => window.location.reload()}>{t('Réessayer')}</button>}
     </section>
@@ -49,13 +49,17 @@ function ConnectionStatusPage({ notFound = false }: { notFound?: boolean }) {
 
 export default function App() {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const [connectionLost, setConnectionLost] = useState(false);
   useEffect(() => {
     const updateOnlineStatus = () => setIsOnline(navigator.onLine);
+    const handleConnectionError = () => setConnectionLost(true);
     window.addEventListener('online', updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
+    window.addEventListener('archives:connection-error', handleConnectionError);
     return () => {
       window.removeEventListener('online', updateOnlineStatus);
       window.removeEventListener('offline', updateOnlineStatus);
+      window.removeEventListener('archives:connection-error', handleConnectionError);
     };
   }, []);
 
@@ -63,7 +67,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <PreferencesProvider>
-        {!isOnline ? <ConnectionStatusPage /> : (
+        {!isOnline ? <ConnectionStatusPage connectionLost /> : connectionLost ? <ConnectionStatusPage connectionLost /> : (
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />

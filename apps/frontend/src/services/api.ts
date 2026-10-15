@@ -8,6 +8,9 @@ api.interceptors.request.use((config) => {
   return config;
 });
 api.interceptors.response.use((response) => response, (error: unknown) => {
+  if (axios.isAxiosError(error) && !error.response && error.code !== 'ERR_CANCELED') {
+    window.dispatchEvent(new Event('archives:connection-error'));
+  }
   if (axios.isAxiosError(error) && error.response?.status === 401 && localStorage.getItem('archives-session')) {
     localStorage.removeItem('archives-session');
     localStorage.removeItem('archives-last-activity');
