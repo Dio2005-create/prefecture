@@ -1,12 +1,15 @@
 import { ConflictException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { AppointmentStatus } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import PDFDocument = require('pdfkit');
 import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { PrismaService } from '../prisma/prisma.service';
 import { generateAppointmentSlots } from './appointment-slots';
 import { NotificationsService } from '../notifications/notifications.service';
 import { getRequestCompleteness } from '../requests/request-requirements';
+import { normalizeOfficialMark } from '../agent/official-mark-image';
 
 @Injectable()
 export class AppointmentsService {
@@ -217,7 +220,7 @@ export class AppointmentsService {
     return this.prisma.appointment.findMany({ where: { userId }, orderBy: { startsAt: 'desc' }, include: { request: { include: { service: true } } } });
   }
 
-  async generateTicket(id: string, userId: string) {
+  async generateTicket(id: string, userId: string): Promise<{ pdf: Buffer; filename: string }> {
     const appointment = await this.prisma.appointment.findUnique({
       where: { id },
       include: {
@@ -238,13 +241,31 @@ export class AppointmentsService {
     if (!logoPath) throw new InternalServerErrorException('Le logo de la préfecture est indisponible');
     const marks = await this.prisma.officialMark.findMany({
       where: { isActive: true, kind: { in: ['STAMP', 'SIGNATURE'] } },
+      orderBy: { createdAt: 'desc' },
     });
     const stamp = marks.find((mark) => mark.kind === 'STAMP' && existsSync(mark.storagePath));
     const signature = marks.find((mark) => mark.kind === 'SIGNATURE' && existsSync(mark.storagePath));
-    const year = new Intl.DateTimeFormat('en', { year: 'numeric', timeZone: 'Indian/Antananarivo' }).format(appointment.startsAt);
-    const reference = `RDV-${year}-${appointment.id.toUpperCase()}`;
+    const readOfficialMark = async (mark: typeof stamp, label: string) => {
+      if (!mark) return null;
+      try {
+        return await normalizeOfficialMark(await readFile(mark.storagePath));
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : 'format non reconnu';
+        throw new InternalServerErrorException(`Le fichier ${label} enregistré est illisible : ${detail}`);
+      }
+    };
+    const [stampImage, signatureImage] = await Promise.all([
+      readOfficialMark(stamp, 'du cachet'),
+      readOfficialMark(signature, 'de la signature'),
+    ]);
+    const reference = appointment.ticketReference;
+    if (!reference) throw new InternalServerErrorException('La référence de ce rendez-vous est indisponible');
+    const requestName = appointment.request?.title?.trim() || appointment.request?.service.nameFr || 'rendez-vous';
+    const fileSlug = requestName.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'rendez-vous';
+    const filename = `ticket-${fileSlug}.pdf`;
 
-    return new Promise<Buffer>((resolve, reject) => {
+    const pdf = await new Promise<Buffer>((resolve, reject) => {
       const document = new PDFDocument({ size: [420, 595], margin: 32 });
       const chunks: Buffer[] = [];
       document.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -283,12 +304,13 @@ export class AppointmentsService {
 
       const markY = Math.min(document.y + 10, 435);
       const rightEdge = 420 - 32;
-      if (signature && existsSync(signature.storagePath)) document.image(signature.storagePath, rightEdge - 120, markY, { fit: [120, 58] });
-      if (stamp && existsSync(stamp.storagePath)) document.image(stamp.storagePath, rightEdge - 52, markY + 47, { fit: [52, 44] });
+      if (signatureImage) document.image(signatureImage, rightEdge - 120, markY, { fit: [120, 58] });
+      if (stampImage) document.image(stampImage, rightEdge - 80, markY + 6, { fit: [80, 60] });
       document.font('Helvetica').fontSize(8).fillColor('#53645a')
         .text('Présentez ce ticket à votre arrivée. Merci de vous présenter quelques minutes avant l’heure indiquée.', 32, 535, { width: 356, align: 'center' });
       document.end();
     });
+    return { pdf, filename };
   }
 
   listAll() {
@@ -296,6 +318,25 @@ export class AppointmentsService {
       orderBy: { startsAt: 'asc' },
       include: { user: { select: { id: true, email: true, nom: true, phone: true } }, request: { include: { service: true } } },
     });
+  }
+
+  private async nextTicketReference(tx: Prisma.TransactionClient, startsAt: Date) {
+    const localDateParts = new Intl.DateTimeFormat('en', {
+      timeZone: 'Indian/Antananarivo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(startsAt);
+    const localDate = `${localDateParts.find((part) => part.type === 'year')?.value}-${localDateParts.find((part) => part.type === 'month')?.value}-${localDateParts.find((part) => part.type === 'day')?.value}`;
+    const localDay = Number(localDate.slice(-2));
+    const dayStart = new Date(`${localDate}T00:00:00+03:00`);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${localDate}))`;
+    const dailyCount = await tx.appointment.count({
+      where: { startsAt: { gte: dayStart, lt: dayEnd }, ticketReference: { not: null } },
+    });
+    return `RDV-${String(dailyCount + 1).padStart(3, '0')}-${localDay}`;
   }
 
   async book(userId: string, input: { slotId: string; requestId?: string; notes?: string }) {
@@ -352,8 +393,10 @@ export class AppointmentsService {
         where: { slotId: slot.id, status: { in: [AppointmentStatus.PENDING, AppointmentStatus.BOOKED] } },
       });
       if (existingAppointment) throw new ConflictException('Ce créneau est déjà réservé');
+      const ticketReference = await this.nextTicketReference(tx, slot.startsAt);
       return tx.appointment.create({
         data: {
+          ticketReference,
           userId,
           requestId: input.requestId,
           slotId: slot.id,
@@ -414,8 +457,10 @@ export class AppointmentsService {
       });
       if (occupied) throw new ConflictException('Ce créneau est déjà réservé');
 
+      const ticketReference = await this.nextTicketReference(tx, slot.startsAt);
       const created = await tx.appointment.create({
         data: {
+          ticketReference,
           userId: request.userId,
           requestId,
           slotId,

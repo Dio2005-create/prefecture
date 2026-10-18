@@ -254,6 +254,7 @@ model RequestAttachment {
   label        String?
   originalName String
   storagePath  String
+  extractedText String?      @db.Text
   mimeType     String?
   size         Int?
   createdAt    DateTime      @default(now())
@@ -368,6 +369,7 @@ model Payment {
 }
 model Appointment {
   id         String            @id @default(uuid())
+  ticketReference String?
   userId     String
   requestId  String?
   slotId     String?

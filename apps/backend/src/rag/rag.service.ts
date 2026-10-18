@@ -1,12 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { QdrantService } from '../ai/qdrant.service';
 import { FastApiAiService } from '../ai/fastapi-ai.service';
 import { findRequestModel, requestModels } from '../requests/request-models';
 import { getRequestRequirements } from '../requests/request-requirements';
+import { existsSync } from 'node:fs';
 
 @Injectable()
 export class RagService {
+  private readonly logger = new Logger(RagService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: FastApiAiService,
@@ -48,6 +51,16 @@ export class RagService {
   async repondre(question: string, topK: number, utilisateurId?: string, conversationId?: string) {
     const activeConversationId = await this.obtenirOuCreerConversation(utilisateurId, conversationId, question);
     const language = this.detecterLangue(question);
+    const personalDocumentSearch = this.extraireRechercheDocumentPersonnelle(question);
+    if (personalDocumentSearch && utilisateurId) {
+      const { hits, unreadableCount } = await this.rechercherDansDocumentsPersonnels(utilisateurId, personalDocumentSearch, topK);
+      const response = hits.length
+        ? this.reponseRechercheDocumentPersonnelle(personalDocumentSearch, hits, language, unreadableCount)
+        : language === 'mg'
+          ? `Tsy nahita antontan-taratasy tao amin’ny kaontinao misy ny teny hoe « ${personalDocumentSearch} » aho.${unreadableCount ? ` Tsy voavaky ny rakitra ${unreadableCount}, ka mety tsy feno ny valiny.` : ''}`
+          : `Je n’ai trouvé aucun de vos documents contenant le mot « ${personalDocumentSearch} ».${unreadableCount ? ` ${unreadableCount} pièce(s) n’ont pas pu être lue(s), le résultat peut donc être incomplet.` : ''}`;
+      return this.enregistrerHistorique(question, response, hits, utilisateurId, activeConversationId);
+    }
     const isGreeting = this.estSalutation(question);
     const requestType = isGreeting ? null : findRequestModel(question);
     const localReply = requestType ? null : this.reponseLocaleQuestion(question, language);
@@ -102,6 +115,148 @@ export class RagService {
         : this.construireReponseLocale(question, hits, language);
     }
     return this.enregistrerHistorique(question, reponse, hits, utilisateurId, activeConversationId);
+  }
+
+  private extraireRechercheDocumentPersonnelle(question: string): string | null {
+    const normalized = this.normaliserTexte(question);
+    const parleDeDocuments = /\b(documents?|pieces?|fichiers?|dossiers?)\b/.test(normalized);
+    const demandeRechercheExacte = /\b(contient|contiennent|contenant|contient-il|contient-elle|mot|terme)\b/.test(normalized);
+    if (!parleDeDocuments || !demandeRechercheExacte) return null;
+
+    const explicitTerm = question.match(/\b(?:mot|terme)\b\s*[:«"']?\s*([\p{L}\p{N}_-]+)/iu)?.[1];
+    const candidate = explicitTerm ?? this.termesRecherche(question).at(-1);
+    return candidate?.trim() || null;
+  }
+
+  private async rechercherDansDocumentsPersonnels(
+    utilisateurId: string,
+    term: string,
+    topK: number,
+  ): Promise<{
+    hits: Array<{ chunkId: string; documentId: string; contenu: string; score: number }>;
+    unreadableCount: number;
+  }> {
+    const requests = await this.prisma.serviceRequest.findMany({
+      where: { userId: utilisateurId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        service: { select: { nameFr: true } },
+        attachments: {
+          select: {
+            id: true,
+            label: true,
+            originalName: true,
+            storagePath: true,
+            mimeType: true,
+            extractedText: true,
+          },
+        },
+      },
+    });
+    const pendingOcr = requests.flatMap((request) => request.attachments
+      .filter((attachment) => !attachment.extractedText &&
+        ['application/pdf', 'image/jpeg', 'image/png'].includes(attachment.mimeType ?? ''))
+      .map((attachment) => ({ attachment, requestId: request.id })));
+    let unreadableCount = 0;
+
+    for (let offset = 0; offset < pendingOcr.length; offset += 4) {
+      await Promise.all(pendingOcr.slice(offset, offset + 4).map(async ({ attachment, requestId }) => {
+        if (!existsSync(attachment.storagePath)) {
+          unreadableCount += 1;
+          this.logger.warn(`Fichier indisponible pour la recherche du document ${attachment.id} de la demande ${requestId}`);
+          return;
+        }
+        try {
+          const extractedText = await this.ai.extraireTexte(attachment.storagePath, attachment.originalName);
+          if (!extractedText) {
+            unreadableCount += 1;
+            return;
+          }
+          await this.prisma.requestAttachment.update({
+            where: { id: attachment.id },
+            data: { extractedText },
+          });
+          attachment.extractedText = extractedText;
+        } catch (error) {
+          unreadableCount += 1;
+          this.logger.warn(
+            `OCR indisponible pour la pièce ${attachment.id} de la demande ${requestId}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }));
+    }
+
+    const normalizedTerm = this.normaliserTexte(term);
+    const exactTerm = new RegExp(`(^|[^a-z0-9])${this.echapperExpressionReguliere(normalizedTerm)}($|[^a-z0-9])`);
+    const hits = requests.flatMap((request) => {
+      const formData = request.formData && typeof request.formData === 'object'
+        ? JSON.stringify(request.formData)
+        : '';
+      const attachmentMatches = request.attachments.filter((attachment) =>
+        [attachment.label, attachment.originalName, attachment.extractedText]
+          .some((value) => value && exactTerm.test(this.normaliserTexte(value))));
+      const requestContent = [request.title, request.description, formData]
+        .filter((value): value is string => Boolean(value))
+        .join('\n');
+      const requestMatches = exactTerm.test(this.normaliserTexte(requestContent));
+      if (!requestMatches && !attachmentMatches.length) return [];
+
+      const matchedFiles = attachmentMatches.map((attachment) => attachment.originalName).join(', ');
+      const matchingFields = requestContent.split(/[\n,;{}"]+/)
+        .map((value) => value.trim())
+        .filter((value) => exactTerm.test(this.normaliserTexte(value)))
+        .slice(0, 4);
+      const date = new Intl.DateTimeFormat('fr-FR', {
+        dateStyle: 'short',
+        timeZone: 'Indian/Antananarivo',
+      }).format(request.createdAt);
+      const excerpt = [
+        `Demande : ${request.title ?? request.service.nameFr}`,
+        `Service : ${request.service.nameFr}`,
+        `Statut : ${request.status}`,
+        `Créée le : ${date}`,
+        matchingFields.length ? `Informations correspondantes : ${matchingFields.join(' ; ')}` : '',
+        matchedFiles ? `Pièces correspondantes : ${matchedFiles}` : '',
+      ].filter(Boolean).join('\n');
+      return [{
+        chunkId: '',
+        documentId: request.id,
+        contenu: excerpt,
+        score: 1,
+      }];
+    }).slice(0, Math.max(1, Math.min(topK, 20)));
+    return { hits, unreadableCount };
+  }
+
+  private reponseRechercheDocumentPersonnelle(
+    term: string,
+    hits: Array<{ contenu: string }>,
+    language: 'fr' | 'mg',
+    unreadableCount: number,
+  ) {
+    const documents = hits.map((hit) => {
+      const fields = Object.fromEntries(hit.contenu.split('\n').map((line) => {
+        const separator = line.indexOf(': ');
+        return separator < 0 ? ['', ''] : [line.slice(0, separator), line.slice(separator + 2)];
+      }));
+      const title = fields['Demande'] ?? 'Document';
+      const service = fields['Service'] ? ` — ${fields['Service']}` : '';
+      const status = fields['Statut'] ? ` (${fields['Statut']})` : '';
+      const matched = fields['Informations correspondantes'] ?? fields['Pièces correspondantes'];
+      return `- ${title}${service}${status}${matched ? ` — ${matched}` : ''}`;
+    });
+    const unreadableNotice = unreadableCount
+      ? language === 'mg'
+        ? `\nTsy voavaky ny rakitra ${unreadableCount}, ka mety tsy feno ny valiny.`
+        : `\n${unreadableCount} pièce(s) n’ont pas pu être lue(s), le résultat peut donc être incomplet.`
+      : '';
+    return language === 'mg'
+      ? `Ireto ny antontan-taratasy ao amin’ny kaontinao ahitana ny teny hoe « ${term} »:\n${documents.join('\n')}${unreadableNotice}`
+      : `J’ai trouvé ${hits.length} document(s) dans votre compte contenant le mot « ${term} » :\n${documents.join('\n')}${unreadableNotice}`;
+  }
+
+  private echapperExpressionReguliere(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private async obtenirOuCreerConversation(utilisateurId: string | undefined, conversationId: string | undefined, question: string) {

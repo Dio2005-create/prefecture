@@ -80,12 +80,12 @@ export class AppointmentsController {
   async downloadTicket(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user?: { id: string } }, @Res() response: Response) {
     const userId = req.user?.id;
     if (!userId) throw new NotFoundException('Utilisateur introuvable');
-    const pdf = await this.appointments.generateTicket(id, userId);
+    const ticket = await this.appointments.generateTicket(id, userId);
     response.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="ticket-rdv-${id}.pdf"`,
+      'Content-Disposition': `attachment; filename="${ticket.filename}"; filename*=UTF-8''${encodeURIComponent(ticket.filename)}`,
     });
-    response.send(pdf);
+    response.send(ticket.pdf);
   }
 
   @Get('admin')

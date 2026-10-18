@@ -13,7 +13,14 @@ const appointmentStatusLabels: Record<string, string> = {
   COMPLETED: 'Termine',
 };
 
-type Appointment = { id: string; startsAt: string; office: string; status: string };
+type Appointment = {
+  id: string;
+  ticketReference: string | null;
+  startsAt: string;
+  office: string;
+  status: string;
+  request?: { title: string | null; service: { nameFr: string } } | null;
+};
 type AvailableSlot = { id: string; startsAt: string; endsAt: string; office: string };
 
 export function AppointmentsPage() {
@@ -63,11 +70,11 @@ export function AppointmentsPage() {
   const handleDownloadTicket = async (id: string) => {
     setTicketError('');
     try {
-      const pdf = await appointmentService.downloadTicket(id);
+      const { pdf, filename } = await appointmentService.downloadTicket(id);
       const url = URL.createObjectURL(pdf);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `ticket-rdv-${id}.pdf`;
+      link.download = filename;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch {
@@ -99,7 +106,7 @@ export function AppointmentsPage() {
       <h2>{t('Historique')}</h2>
       {ticketError && <p className="error-message" role="alert">{t(ticketError)}</p>}
       {isLoading ? <p>{t('Chargement...')}</p> : appointments.length === 0 ? <p>{t('Aucun rendez-vous reserve.')}</p> : <div className="appointment-list">
-        {visibleAppointments.map((appointment) => <div className="recent-row" key={appointment.id}><CalendarDays size={18} /><span><strong>{new Date(appointment.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })}</strong><small>{appointment.office} · {t(appointmentStatusLabels[appointment.status] ?? appointment.status.replace(/_/g, ' ').toLowerCase())}</small></span>{(appointment.status === 'BOOKED' || appointment.status === 'COMPLETED') && <button className="button small" type="button" onClick={() => void handleDownloadTicket(appointment.id)}><Download size={14} />{t('Télécharger le ticket')}</button>}{appointment.status === 'PENDING' || appointment.status === 'BOOKED' ? <button className="button small appointment-reject" onClick={() => setCancelTarget(appointment.id)}>{t('Annuler')}</button> : null}</div>)}
+        {visibleAppointments.map((appointment) => <div className="recent-row" key={appointment.id}><CalendarDays size={18} /><span><strong>{new Date(appointment.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })}</strong><small>{appointment.ticketReference ? `${appointment.ticketReference} · ` : ''}{appointment.office} · {t(appointmentStatusLabels[appointment.status] ?? appointment.status.replace(/_/g, ' ').toLowerCase())}</small></span>{(appointment.status === 'BOOKED' || appointment.status === 'COMPLETED') && <button className="button small" type="button" onClick={() => void handleDownloadTicket(appointment.id)}><Download size={14} />{t('Télécharger le ticket')}</button>}{appointment.status === 'PENDING' || appointment.status === 'BOOKED' ? <button className="button small appointment-reject" onClick={() => setCancelTarget(appointment.id)}>{t('Annuler')}</button> : null}</div>)}
         <Pagination page={appointmentPage} totalPages={Math.max(1, Math.ceil(appointments.length / 5))} onChange={setAppointmentPage} />
       </div>}
       {cancelTarget && <div className="modal-backdrop" role="presentation"><section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="cancel-appointment-title"><p className="eyebrow">{t('Rendez-vous')}</p><h2 id="cancel-appointment-title">{t('Annuler ce rendez-vous ?')}</h2><p>{t('Le creneau sera libere pour un autre citoyen.')}</p><div className="modal-actions"><button className="button" onClick={() => setCancelTarget(null)}>{t('Retour')}</button><button className="button appointment-reject" disabled={cancellation.isPending} onClick={() => cancellation.mutate(cancelTarget)}>{t("Confirmer l'annulation")}</button></div></section></div>}

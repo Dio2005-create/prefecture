@@ -408,13 +408,13 @@ export function AdminStampAndSignaturePage() {
       const message = axios.isAxiosError(error) && error.response?.data instanceof Blob
         ? await error.response.data.text()
         : '';
-      let clearMessage = 'L’extraction a échoué. Vous pouvez réessayer ou enregistrer l’image originale.';
+      let clearMessage = 'La numérisation a échoué. Réessayez ou choisissez une image plus nette.';
       if (message) {
         try {
           const payload = JSON.parse(message) as { message?: string };
           if (payload.message) clearMessage = payload.message;
         } catch {
-          clearMessage = 'L’extraction a échoué. Vous pouvez réessayer ou enregistrer l’image originale.';
+          clearMessage = 'La numérisation a échoué. Réessayez ou choisissez une image plus nette.';
         }
       }
       setExtractionError(clearMessage);
@@ -452,10 +452,12 @@ export function AdminStampAndSignaturePage() {
       {file && <small>{file.name}</small>}
       {file && !processedFile && <button className="button primary" onClick={() => void previewExtraction()} disabled={extracting || uploading}>{t(extracting ? 'Nettoyage de l’image...' : 'Extraire et prévisualiser')}</button>}
       {extracting && <p role="status">{t('Suppression du fond et préparation de l’aperçu...')}</p>}
-      {extractionError && <div role="alert" className="error-message">{t(extractionError)}<div className="mark-actions" style={{ justifyContent: 'flex-start', marginTop: 8 }}><button className="button muted" onClick={() => file && void previewExtraction()} disabled={extracting || uploading}>{t('Réessayer')}</button><button className="button" onClick={() => file && void upload(file)} disabled={!name.trim() || uploading}>{t('Utiliser l’image originale')}</button><button className="button" onClick={resetUpload}>{t('Choisir une autre image')}</button></div></div>}
-      {processedFile && previewUrl && <div style={{ display: 'grid', gap: 8, padding: 12, border: '1px solid var(--color-border)', borderRadius: 8 }}>
+      {extractionError &&       <div role="alert" className="error-message">{t(extractionError)}<div className="mark-actions" style={{ justifyContent: 'flex-start', marginTop: 8 }}><button className="button muted" onClick={() => file && void previewExtraction()} disabled={extracting || uploading}>{t('Réessayer')}</button><button className="button" onClick={resetUpload}>{t('Choisir une autre image')}</button></div></div>}
+      {processedFile && previewUrl && <div style={{ display: 'grid', gap: 8, width: '100%', padding: 12, border: '1px solid var(--color-border)', borderRadius: 8 }}>
         <strong>{t('Aperçu de l’image avec fond transparent')}</strong>
-        <img src={previewUrl} alt={t('Aperçu de la signature ou du cachet extrait')} style={{ maxWidth: 280, maxHeight: 180, objectFit: 'contain', justifySelf: 'start', backgroundColor: '#f1f1f1', backgroundImage: 'linear-gradient(45deg,#ddd 25%,transparent 25%),linear-gradient(-45deg,#ddd 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ddd 75%),linear-gradient(-45deg,transparent 75%,#ddd 75%)', backgroundSize: '16px 16px', backgroundPosition: '0 0,0 8px,8px -8px,-8px 0' }} />
+      <div style={{ display: 'grid', placeItems: 'center', width: '100%', minHeight: 360, overflow: 'auto', borderRadius: 8, backgroundColor: '#f1f1f1', backgroundImage: 'linear-gradient(45deg,#ddd 25%,transparent 25%),linear-gradient(-45deg,#ddd 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ddd 75%),linear-gradient(-45deg,transparent 75%,#ddd 75%)', backgroundSize: '16px 16px', backgroundPosition: '0 0,0 8px,8px -8px,-8px 0' }}>
+        <img src={previewUrl} alt={t('Aperçu de la signature ou du cachet extrait')} style={{ display: 'block', width: 'auto', maxWidth: 'min(100%, 760px)', maxHeight: 360, objectFit: 'contain' }} />
+      </div>
         <div className="mark-actions" style={{ justifyContent: 'flex-start' }}>
           <button className="button primary" onClick={() => void upload(processedFile)} disabled={!name.trim() || uploading}>{t(uploading ? 'Enregistrement...' : 'Valider et enregistrer')}</button>
           <button className="button" onClick={resetUpload} disabled={uploading}>{t('Recommencer')}</button>
@@ -543,11 +545,26 @@ export function AdminAppointmentsPage() {
   const client = useQueryClient();
   const { data: appointments = [], isLoading } = useQuery({ queryKey: ['admin-appointments'], queryFn: appointmentService.listForAdmin, refetchInterval: 3000 });
   const [appointmentPage, setAppointmentPage] = useState(1);
+  const [appointmentSearch, setAppointmentSearch] = useState('');
+  const [appointmentSearchDate, setAppointmentSearchDate] = useState('');
   const [availabilityPage, setAvailabilityPage] = useState(1);
   const [slotPage, setSlotPage] = useState(1);
   const sortedAppointments = [...appointments].sort((first, second) => new Date(second.startsAt).getTime() - new Date(first.startsAt).getTime());
-  const appointmentTotalPages = Math.ceil(sortedAppointments.length / 5);
-  const visibleAppointments = sortedAppointments.slice((appointmentPage - 1) * 5, appointmentPage * 5);
+  const normalizedAppointmentSearch = appointmentSearch.trim().toLocaleLowerCase();
+  const filteredAppointments = sortedAppointments.filter((appointment) => {
+    const matchesReference = !normalizedAppointmentSearch ||
+      (appointment.ticketReference ?? '').toLocaleLowerCase().includes(normalizedAppointmentSearch);
+    const dateParts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Indian/Antananarivo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date(appointment.startsAt));
+    const localDate = `${dateParts.find((part) => part.type === 'year')?.value}-${dateParts.find((part) => part.type === 'month')?.value}-${dateParts.find((part) => part.type === 'day')?.value}`;
+    return matchesReference && (!appointmentSearchDate || localDate === appointmentSearchDate);
+  });
+  const appointmentTotalPages = Math.ceil(filteredAppointments.length / 5);
+  const visibleAppointments = filteredAppointments.slice((appointmentPage - 1) * 5, appointmentPage * 5);
   useEffect(() => {
     if (appointmentTotalPages > 0 && appointmentPage > appointmentTotalPages) setAppointmentPage(appointmentTotalPages);
   }, [appointmentPage, appointmentTotalPages]);
@@ -671,9 +688,13 @@ export function AdminAppointmentsPage() {
       {!slotsLoading && <Pagination page={slotPage} totalPages={slotTotalPages} onChange={setSlotPage} />}
     </section>
     <h2>{t('Rendez-vous réservés')}</h2>
-    {isLoading ? <p>{t('Chargement...')}</p> : appointments.length === 0 ? <div className="empty-state"><CalendarDays size={28} /><span>{t('Aucun rendez-vous enregistré.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{visibleAppointments.map((appointment: { id: string; startsAt: string; endsAt: string; office: string; status: string; user?: { nom?: string | null; email: string }; request?: { type: string; title: string | null } | null }) => {
+    <div className="request-form-grid" style={{ margin: '12px 0' }}>
+      <label className="request-field">{t('Rechercher par référence du ticket')}<input value={appointmentSearch} placeholder="RDV-001" onChange={(event) => { setAppointmentSearch(event.target.value); setAppointmentPage(1); }} /></label>
+      <label className="request-field">{t('Filtrer par date du rendez-vous')}<input type="date" value={appointmentSearchDate} onChange={(event) => { setAppointmentSearchDate(event.target.value); setAppointmentPage(1); }} /></label>
+    </div>
+    {isLoading ? <p>{t('Chargement...')}</p> : appointments.length === 0 ? <div className="empty-state"><CalendarDays size={28} /><span>{t('Aucun rendez-vous enregistré.')}</span></div> : filteredAppointments.length === 0 ? <div className="empty-state"><CalendarDays size={28} /><span>{t('Aucun ticket ne correspond à cette recherche.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{visibleAppointments.map((appointment) => {
       const isFingerprintAppointment = appointment.request && ['CIN_REQUEST', 'CIN_RENEWAL'].includes(appointment.request.type);
-      return <div className="recent-row" key={appointment.id}><CalendarDays size={18} /><span><strong>{new Date(appointment.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })}</strong><small>{appointment.user?.nom ?? appointment.user?.email} · {t(appointment.office)} · {t(appointment.status)}{isFingerprintAppointment ? ` · ${t('Empreintes digitales — ')}${appointment.request?.title ?? t(appointment.request?.type ?? '')}` : ''}</small></span>{appointment.status === 'PENDING' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small primary" onClick={() => void update(appointment.id, 'BOOKED')}>{t('Confirmer')}</button><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button></span>}{appointment.status === 'BOOKED' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button><button className="button small appointment-complete" disabled={new Date(appointment.endsAt) > new Date()} onClick={() => void update(appointment.id, 'COMPLETED')}>{t(isFingerprintAppointment ? 'Empreintes prises / remis au guichet' : 'Terminer')}</button></span>}</div>;
+      return <div className="recent-row" key={appointment.id}><CalendarDays size={18} /><span><strong>{new Date(appointment.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })} · {appointment.ticketReference ?? t('Référence indisponible')}</strong><small>{appointment.user?.nom ?? appointment.user?.email} · {t(appointment.office)} · {t(appointment.status)}{isFingerprintAppointment ? ` · ${t('Empreintes digitales — ')}${appointment.request?.title ?? t(appointment.request?.type ?? '')}` : ''}</small></span>{appointment.status === 'PENDING' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small primary" onClick={() => void update(appointment.id, 'BOOKED')}>{t('Confirmer')}</button><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button></span>}{appointment.status === 'BOOKED' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button><button className="button small appointment-complete" disabled={new Date(appointment.endsAt) > new Date()} onClick={() => void update(appointment.id, 'COMPLETED')}>{t(isFingerprintAppointment ? 'Empreintes prises / remis au guichet' : 'Terminer')}</button></span>}</div>;
     })}</div>}
     <Pagination page={appointmentPage} totalPages={appointmentTotalPages} onChange={setAppointmentPage} />
   </section>;

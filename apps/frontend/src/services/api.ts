@@ -115,10 +115,28 @@ export const complaintService = {
 export const appointmentService = {
   available: async (date?: string) => (await api.get('/appointments/available', { params: date ? { date } : undefined })).data,
   list: async () => (await api.get('/appointments')).data,
-  downloadTicket: async (id: string) => (await api.get<Blob>(`/appointments/${id}/ticket`, { responseType: 'blob' })).data,
+  downloadTicket: async (id: string) => {
+    const response = await api.get<Blob>(`/appointments/${id}/ticket`, { responseType: 'blob' });
+    const disposition = String(response.headers['content-disposition'] ?? '');
+    const encodedFilename = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+    const plainFilename = /filename="?([^";]+)"?/i.exec(disposition)?.[1];
+    return {
+      pdf: response.data,
+      filename: encodedFilename ? decodeURIComponent(encodedFilename) : plainFilename ?? `ticket-rdv-${id}.pdf`,
+    };
+  },
   book: async (payload: { slotId: string; requestId?: string; notes?: string }) => (await api.post('/appointments', payload)).data,
   cancel: async (id: string) => (await api.delete(`/appointments/${id}`)).data,
-  listForAdmin: async () => (await api.get('/appointments/admin')).data,
+  listForAdmin: async () => (await api.get<Array<{
+    id: string;
+    ticketReference: string | null;
+    startsAt: string;
+    endsAt: string;
+    office: string;
+    status: string;
+    user?: { nom: string | null; email: string | null };
+    request?: { type: string; title: string | null; service: { nameFr: string } } | null;
+  }>>('/appointments/admin')).data,
   updateStatus: async (id: string, status: 'BOOKED' | 'CANCELLED' | 'COMPLETED') => (await api.patch(`/appointments/admin/${id}/status`, { status })).data,
   listAvailabilityForAdmin: async () => (await api.get('/appointments/admin/availability')).data,
   createAvailability: async (payload: { date: string; startTime: string; endTime: string; slotDurationMinutes: number; breakStart?: string; breakEnd?: string; office?: string }) =>

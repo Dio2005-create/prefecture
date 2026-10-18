@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateRequestDto } from './dto/create-request.dto';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -6,13 +6,15 @@ import PDFDocument = require('pdfkit');
 import { Prisma } from '@prisma/client';
 import { existsSync } from 'node:fs';
 import { createReadStream } from 'node:fs';
-import { unlink } from 'node:fs/promises';
+import { readFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RequestType } from '@prisma/client';
 import { PaymentProvider } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { getRequestCompleteness, getRequestRequirements } from './request-requirements';
 import { requestModels } from './request-models';
+import { normalizeOfficialMark } from '../agent/official-mark-image';
+import { FastApiAiService } from '../ai/fastapi-ai.service';
 
 const defaultFees: Record<RequestType, number> = {
   BIRTH_CERTIFICATE: 5000,
@@ -41,7 +43,11 @@ const citizenEditableStatuses = ['DRAFT', 'SUBMITTED', 'PENDING_CHIEF', 'IN_REVI
 export class RequestsService {
   private readonly logger = new Logger(RequestsService.name);
 
-  constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+    private readonly ai: FastApiAiService,
+  ) {}
 
   getRequirements(type: RequestType) {
     const requirements = getRequestRequirements(type);
@@ -158,6 +164,7 @@ export class RequestsService {
       },
       include: { service: true, attachments: true, history: { orderBy: { createdAt: 'asc' } } },
     });
+    this.indexAttachmentsInBackground(created.attachments);
     await this.notifications.createForUser(userId, 'Demande soumise', `Votre demande « ${created.title ?? service.nameFr} » a été transmise à la Préfecture.`);
     try {
       await this.notifications.createForAdministrators(
@@ -352,7 +359,7 @@ export class RequestsService {
       throw new BadRequestException('La photo d’identité 4 x 4 doit être une image JPG ou PNG');
     }
 
-    return this.prisma.$transaction(async (transaction) => {
+    const created = await this.prisma.$transaction(async (transaction) => {
       if (!isBackOffice) {
         const editable = await transaction.serviceRequest.updateMany({
           where: { id: requestId, userId: user.id, status: { in: [...citizenEditableStatuses] } },
@@ -368,6 +375,8 @@ export class RequestsService {
       });
       return created;
     });
+    this.indexAttachmentsInBackground([created]);
+    return created;
   }
 
   async replaceAttachment(
@@ -398,7 +407,13 @@ export class RequestsService {
       }
       const replaced = await transaction.requestAttachment.update({
         where: { id: attachmentId },
-        data: { originalName: file.originalname, storagePath: file.path, mimeType: file.mimetype, size: file.size },
+        data: {
+          originalName: file.originalname,
+          storagePath: file.path,
+          extractedText: null,
+          mimeType: file.mimetype,
+          size: file.size,
+        },
       });
       await transaction.requestStatusHistory.create({
         data: { requestId, status: attachment.request.status, comment: 'Pièce justificative remplacée dans le dossier', changedById: user.id },
@@ -406,7 +421,38 @@ export class RequestsService {
       return replaced;
     });
     if (existsSync(attachment.storagePath)) await unlink(attachment.storagePath);
+    this.indexAttachmentsInBackground([updated]);
     return updated;
+  }
+
+  private indexAttachmentsInBackground(attachments: Array<{
+    id: string;
+    storagePath: string;
+    originalName: string;
+    mimeType: string | null;
+  }>) {
+    void (async () => {
+      for (let offset = 0; offset < attachments.length; offset += 4) {
+        await Promise.all(attachments.slice(offset, offset + 4).map(async (attachment) => {
+          if (!['application/pdf', 'image/jpeg', 'image/png'].includes(attachment.mimeType ?? '')) return;
+          try {
+            const extractedText = await this.ai.extraireTexte(attachment.storagePath, attachment.originalName);
+            if (extractedText) {
+              await this.prisma.requestAttachment.update({
+                where: { id: attachment.id },
+                data: { extractedText },
+              });
+            }
+          } catch (error) {
+            this.logger.warn(
+              `OCR indisponible pour la pièce jointe ${attachment.id}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }));
+      }
+    })().catch((error: unknown) => {
+      this.logger.error('Échec de l’indexation OCR des pièces jointes', error instanceof Error ? error.stack : String(error));
+    });
   }
 
   async getAttachment(requestId: string, attachmentId: string, user: { id: string; roles?: string[]; role?: string }) {
@@ -431,7 +477,25 @@ export class RequestsService {
       ? request.formData as Record<string, unknown>
       : {};
     const model = this.getModelPdf(request.type);
-    const marks = await this.prisma.officialMark.findMany({ where: { isActive: true, kind: { in: ['STAMP', 'SIGNATURE'] } } });
+    const marks = await this.prisma.officialMark.findMany({
+      where: { isActive: true, kind: { in: ['STAMP', 'SIGNATURE'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+    const stamp = marks.find((mark) => mark.kind === 'STAMP');
+    const signature = marks.find((mark) => mark.kind === 'SIGNATURE');
+    const readOfficialMark = async (mark: typeof stamp, label: string) => {
+      if (!mark) return null;
+      try {
+        return await normalizeOfficialMark(await readFile(mark.storagePath));
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : 'format non reconnu';
+        throw new InternalServerErrorException(`Le fichier ${label} enregistré est illisible : ${detail}`);
+      }
+    };
+    const [stampImage, signatureImage] = await Promise.all([
+      readOfficialMark(stamp, 'du cachet'),
+      readOfficialMark(signature, 'de la signature'),
+    ]);
 
     return new Promise<Buffer>((resolve, reject) => {
       const document = new PDFDocument({ size: 'A4', margin: 56 });
@@ -508,20 +572,12 @@ export class RequestsService {
       });
       document.moveDown(1).fontSize(11).text(renderedTemplate);
       document.moveDown(2);
-      const stamp = marks.find((mark) => mark.kind === 'STAMP');
-      const signature = marks.find((mark) => mark.kind === 'SIGNATURE');
-      const signaturePath = signature && existsSync(signature.storagePath) ? signature.storagePath : null;
-      const stampPath = stamp && existsSync(stamp.storagePath) ? stamp.storagePath : null;
-      if (signaturePath || stampPath) {
+      if (signatureImage || stampImage) {
         if (document.y + 140 > document.page.height - document.page.margins.bottom) document.addPage();
         const markY = document.y;
         const rightEdge = document.page.width - document.page.margins.right;
-        try {
-          if (signaturePath) document.image(signaturePath, rightEdge - 140, markY, { fit: [140, 80] });
-        } catch { }
-        try {
-          if (stampPath) document.image(stampPath, rightEdge - 120, markY + 60, { fit: [120, 80] });
-        } catch { }
+        if (signatureImage) document.image(signatureImage, rightEdge - 140, markY, { fit: [140, 80] });
+        if (stampImage) document.image(stampImage, rightEdge - 120, markY + 8, { fit: [120, 80] });
         document.y = markY + 140;
       }
       document.moveDown(3).fontSize(9).text('Document généré par la plateforme e-Servisy d’Ihosy. Toute vérification doit être effectuée auprès du service émetteur.', { align: 'center' });
