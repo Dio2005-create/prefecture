@@ -10,18 +10,27 @@ export class RagController {
   constructor(private readonly ragService: RagService) {}
 
   @Post('search')
-  search(@Body() data: SearchDocumentsDto) {
-    return this.ragService.rechercher(data.query, data.topK);
+  search(@Body() data: SearchDocumentsDto, @Req() request: { user?: { id?: string } }) {
+    if (!request.user?.id) throw new UnauthorizedException('Utilisateur non authentifié');
+    return this.ragService.rechercher(data.query, data.topK, request.user.id);
   }
 
   @Post('ask')
-  ask(@Body() data: SearchDocumentsDto, @Req() request: { user?: { id?: string } }) {
-    return this.ragService.repondre(data.query, data.topK, request.user?.id, data.conversationId);
+  ask(@Body() data: SearchDocumentsDto, @Req() request: { user?: { id?: string; locale?: string } }) {
+    if (!request.user?.id) throw new UnauthorizedException('Utilisateur non authentifié');
+    return this.ragService.repondre(
+      data.query,
+      data.topK,
+      request.user.id,
+      data.conversationId,
+      request.user.locale,
+    );
   }
 
   @Get('history')
   history(@Req() request: { user?: { id?: string } }, @Query('limit') limit?: string) {
-    return this.ragService.historique(request.user?.id ?? '', Number(limit) || 30);
+    if (!request.user?.id) throw new UnauthorizedException('Utilisateur non authentifié');
+    return this.ragService.historique(request.user.id, Number(limit) || 30);
   }
 
   @Patch('history/:id')

@@ -1,5 +1,4 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { NavLink } from 'react-router-dom';
 import { Bot, Check, ChevronRight, CircleHelp, History, Languages, MessageCircle, Pencil, Plus, Search, Send, ShieldCheck, Sparkles, Trash2, UserRound, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ragService, searchService } from '../services/api';
@@ -12,9 +11,8 @@ function Result({ hit, number }: { hit: SearchHit; number: number; }) {
 	return <article className="result-card">
 		<span className="result-number">{String(number).padStart(2, '0')}</span>
 		<div>
-			<div className="result-meta"><span>{t('Document source')}</span><strong>{t('Score {{score}} %', { score: Math.round(hit.score * 100) })}</strong></div>
+			<div className="result-meta"><span>{t('Donnée de votre compte')}</span><strong>{t('Pertinence {{score}} %', { score: Math.round(hit.score * 100) })}</strong></div>
 			<p>{hit.contenu}</p>
-			<NavLink className="text-link" to={`/back/documents/${hit.documentId}`}>{t('Ouvrir le document')} <ChevronRight size={15} /></NavLink>
 		</div>
 	</article>;
 }
@@ -31,16 +29,16 @@ export function SearchPage() {
 
 	return <>
 		<PageIntro
-			eyebrow={t('Exploration sémantique')}
-			title={t('Chercher par le sens')}
-			description={t('Interrogez le fonds avec vos propres mots, même sans connaître la référence exacte.')}
+			eyebrow={t('Recherche privée')}
+			title={t('Rechercher dans vos données')}
+			description={t('Les résultats proviennent uniquement des demandes et pièces rattachées au compte connecté.')}
 		/>
 		<form className="hero-search" onSubmit={search}>
 			<Search size={21} />
 			<input
 				value={query}
 				onChange={(event) => setQuery(event.target.value)}
-				placeholder={t('Quels arrêtés concernent les autorisations de construction ?')}
+				placeholder={t('Quel document de mes demandes contient ce mot ?')}
 				aria-label={t('Votre recherche')}
 			/>
 			<button className="button primary search-submit" type="submit" disabled={!query.trim() || mutation.isPending}>
@@ -56,7 +54,7 @@ export function SearchPage() {
 			</div>
 			{mutation.data.length === 0
 				? <p>{t('Aucun résultat trouvé. Essayez d’autres mots-clés.')}</p>
-				: mutation.data.map((hit, index) => <Result key={hit.chunkId} hit={hit} number={index + 1} />)}
+				: mutation.data.map((hit, index) => <Result key={hit.documentId} hit={hit} number={index + 1} />)}
 		</section>}
 	</>;
 }
@@ -123,9 +121,9 @@ function ChatAssistant({ staff = false }: { staff?: boolean }) {
 	return <div className="assistant-page">
 		<div className="assistant-page-heading">
 			<div>
-				<p className="eyebrow">{t(staff ? 'Assistant archives' : 'Aide citoyenne')}</p>
-				<h1>{t(staff ? 'Assistant Archives IA' : 'Votre assistant administratif')}</h1>
-				<p>{t(staff ? 'Interrogez le fonds documentaire avec une réponse sourcée.' : 'Un accompagnement clair pour comprendre vos démarches, en français ou en malgache.')}</p>
+				<p className="eyebrow">{t(staff ? 'Assistant personnel sécurisé' : 'Aide citoyenne')}</p>
+				<h1>{t(staff ? 'Votre assistant administratif' : 'Votre assistant administratif')}</h1>
+				<p>{t('Un accompagnement clair, limité aux informations de votre compte, en français ou en malgache.')}</p>
 			</div>
 			<div className="assistant-status"><span className="status-dot" /> {t('Assistant disponible')}</div>
 		</div>

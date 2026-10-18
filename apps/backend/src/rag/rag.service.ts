@@ -1,6 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { QdrantService } from '../ai/qdrant.service';
 import { FastApiAiService } from '../ai/fastapi-ai.service';
 import { findRequestModel, requestModels } from '../requests/request-models';
 import { getRequestRequirements } from '../requests/request-requirements';
@@ -13,92 +12,72 @@ export class RagService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: FastApiAiService,
-    private readonly qdrant: QdrantService,
   ) {}
 
-  async rechercher(question: string, topK: number) {
-    const terms = this.termesRecherche(question);
-    const variants = this.variantesRecherche(question);
-    let semanticHits: Array<{ chunkId: string; documentId: string; contenu: string; score: number }> = [];
-    try {
-      const embedding = await this.ai.vectoriser(question);
-      semanticHits = await this.qdrant.rechercher(embedding, topK);
-    } catch {
-    }
-    const chunks = variants.length ? await this.prisma.chunk.findMany({
-      where: { OR: variants.flatMap((term) => [
-        { contenu: { contains: term, mode: 'insensitive' as const } },
-        { document: { titre: { contains: term, mode: 'insensitive' as const } } },
-      ]) },
-      take: Math.max(topK * 10, 30),
-      include: { document: { select: { id: true, titre: true } } },
-    }) : [];
-    const lexicalHits = chunks.map((chunk) => {
-      const searchableText = this.normaliserTexte(`${chunk.document.titre} ${chunk.contenu}`);
-      const matchedTerms = terms.filter((term) => searchableText.includes(term)).length;
-      return {
-        chunkId: chunk.id,
-        documentId: chunk.documentId,
-        contenu: chunk.contenu,
-        score: 0.65 + 0.35 * matchedTerms / Math.max(terms.length, 1),
-      };
-    }).sort((left, right) => right.score - left.score);
-    const lexicalIds = new Set(lexicalHits.map((hit) => hit.chunkId));
-    const hits = [...lexicalHits, ...semanticHits.filter((hit) => !lexicalIds.has(hit.chunkId))];
-    return hits.slice(0, topK);
+  async rechercher(question: string, topK: number, utilisateurId: string) {
+    if (!utilisateurId) throw new UnauthorizedException('Utilisateur non authentifié');
+    const term = this.extraireRechercheDocumentPersonnelle(question) ?? this.termesRecherche(question).at(-1);
+    if (!term) return [];
+    const { hits } = await this.rechercherDansDocumentsPersonnels(utilisateurId, term, topK);
+    return hits;
   }
 
-  async repondre(question: string, topK: number, utilisateurId?: string, conversationId?: string) {
+  async repondre(
+    question: string,
+    topK: number,
+    utilisateurId?: string,
+    conversationId?: string,
+    locale?: string,
+  ) {
+    if (!utilisateurId) throw new UnauthorizedException('Utilisateur non authentifié');
     const activeConversationId = await this.obtenirOuCreerConversation(utilisateurId, conversationId, question);
-    const language = this.detecterLangue(question);
+    const language = this.detecterLangue(question, locale);
     const personalDocumentSearch = this.extraireRechercheDocumentPersonnelle(question);
-    if (personalDocumentSearch && utilisateurId) {
-      const { hits, unreadableCount } = await this.rechercherDansDocumentsPersonnels(utilisateurId, personalDocumentSearch, topK);
+    if (personalDocumentSearch) {
+      const personalResults = await this.rechercherDansDocumentsPersonnels(utilisateurId, personalDocumentSearch, topK);
+      const hits = personalResults.hits;
+      const unreadableCount = personalResults.unreadableCount;
       const response = hits.length
-        ? this.reponseRechercheDocumentPersonnelle(personalDocumentSearch, hits, language, unreadableCount)
+        ? this.reponseRechercheDocument(personalDocumentSearch, hits, language, unreadableCount)
         : language === 'mg'
           ? `Tsy nahita antontan-taratasy tao amin’ny kaontinao misy ny teny hoe « ${personalDocumentSearch} » aho.${unreadableCount ? ` Tsy voavaky ny rakitra ${unreadableCount}, ka mety tsy feno ny valiny.` : ''}`
-          : `Je n’ai trouvé aucun de vos documents contenant le mot « ${personalDocumentSearch} ».${unreadableCount ? ` ${unreadableCount} pièce(s) n’ont pas pu être lue(s), le résultat peut donc être incomplet.` : ''}`;
+          : `Je n’ai trouvé aucun résultat dans les données de votre compte pour le mot « ${personalDocumentSearch} ».${unreadableCount ? ` ${unreadableCount} pièce(s) n’ont pas pu être lue(s), le résultat peut donc être incomplet.` : ''}`;
       return this.enregistrerHistorique(question, response, hits, utilisateurId, activeConversationId);
     }
     const isGreeting = this.estSalutation(question);
     const requestType = isGreeting ? null : findRequestModel(question);
-    const localReply = requestType ? null : this.reponseLocaleQuestion(question, language);
+    const normalizedQuestion = this.normaliserTexte(question);
+    const asksAboutAccount = /\b(mon|ma|mes|moi|my|mine|aho|izaho|izahay|isika|anay|antsika|ianao)\b/.test(normalizedQuestion) ||
+      /\b[\p{L}]+(?:ko|nao|nay|tsika|nareo)\b/u.test(normalizedQuestion) ||
+      (language === 'mg' && /\b(?:ny|amin|momba|moa|ve)\b/.test(normalizedQuestion));
+    const personalContext = asksAboutAccount
+      ? await this.construireContextePersonnel(utilisateurId)
+      : '';
+    const localReply = requestType || asksAboutAccount ? null : this.reponseLocaleQuestion(question, language);
     if (localReply) return this.enregistrerHistorique(question, localReply, [], utilisateurId, activeConversationId);
-    let hits: Array<{ chunkId: string; documentId: string; contenu: string; score: number }> = await this.rechercher(question, topK);
-    hits = hits.filter((hit) => !this.estDocumentDeConception(hit.contenu));
-    if (!hits.length) {
-      const variants = this.variantesRecherche(question);
-      const documents = await this.prisma.documentAdministratif.findMany({
-        where: variants.length ? { OR: variants.map((term) => ({ OR: [
-          { titre: { contains: term, mode: 'insensitive' as const } },
-          { contenuTexte: { contains: term, mode: 'insensitive' as const } },
-        ] })) } : undefined,
-        orderBy: { createdAt: 'desc' },
-        take: topK,
-      });
-      hits = documents.map((document: any, index: number) => ({
-        chunkId: '',
-        documentId: document.id,
-        contenu: (document.contenuTexte ?? '').slice(0, 1200),
-        score: Math.max(0.1, 1 - index / Math.max(topK, 1)),
-      })).filter((hit) => !this.estDocumentDeConception(hit.contenu));
-    }
-    if (!hits.length && !requestType) {
+    const searchTerm = this.termesRecherche(question).at(-1);
+    const personalResults = searchTerm
+      ? await this.rechercherDansDocumentsPersonnels(utilisateurId, searchTerm, topK)
+      : { hits: [], unreadableCount: 0 };
+    const hits = personalResults.hits;
+    if (!hits.length && !requestType && !personalContext) {
       return this.enregistrerHistorique(question, this.reponseSansDocumentPertinent(language), [], utilisateurId, activeConversationId);
     }
     const contexte = [
       requestType ? this.contexteModele(requestType) : '',
+      personalContext,
       hits.map((hit: { contenu: string }, index: number) => `[${index + 1}] ${hit.contenu}`).join('\n\n'),
     ].filter(Boolean).join('\n\n');
     const prompt = [
         'Tu es l’assistant officiel de l’e-Servisy.',
         language === 'mg'
-          ? 'Valiny amin’ny teny malagasy ihany. Valio amin’ny teny malagasy mitovy amin’ny fanontaniana; aza mamaly amin’ny teny frantsay.'
-          : 'Réponds exclusivement en français, comme la question. Ne bascule pas en malgache.',
+          ? 'Valio amin’ny teny malagasy voajanahary sy mazava ihany. Adikao amin’ny teny malagasy ny fanazavana, lohateny, toromarika ary teny teknika; aza mampifangaro teny frantsay afa-tsy anarana ofisialy, kaody na teny tsy azo adika. Tehirizo tsy miova ny zava-misy, daty, isa, dingana, fepetra ary hevitra rehetra.'
+          : 'Réponds exclusivement en français naturel et clair. Traduis les explications, titres, instructions et termes descriptifs en français ; ne mélange pas le malgache sauf pour les noms officiels, codes ou termes intraduisibles. Préserve exactement les faits, dates, nombres, étapes, conditions et le sens.',
         'Réponds uniquement aux questions concernant les démarches, services, documents, rendez-vous et demandes de la préfecture.',
         'Pour une question hors sujet, refuse poliment et invite la personne à demander de l’aide sur une démarche préfectorale.',
         'Les modèles administratifs officiels et leurs champs/pièces sont fournis dans le contexte. Utilise-les même en l’absence de résultat de recherche documentaire. N’invente pas de pièce ou de condition absente du modèle.',
+        'Les données de compte fournies dans le contexte appartiennent exclusivement à l’utilisateur connecté. Réponds aux questions personnelles uniquement à partir de ces données ; si elles ne contiennent pas la réponse, dis-le clairement.',
+        'Donne une réponse claire, complète et concise. Lorsque des faits sont fournis dans le contexte, restitue tous ceux qui répondent à la question sans en ajouter ni en omettre ; en français et en malgache, les faits et conclusions doivent rester identiques.',
         'Structure les réponses avec des rubriques courtes et des listes lisibles. Pour une démarche, sépare les étapes, les pièces à fournir et les éventuelles précisions.',
         'Écris en texte brut avec des titres et des puces. N’affiche ni syntaxe Markdown ni références comme [1] ou [2].',
         'Ne présente jamais de diagrammes de classes, de méthodes de programmation, d’attributs techniques ou de vues d’application comme une réponse administrative.',
@@ -126,6 +105,104 @@ export class RagService {
     const explicitTerm = question.match(/\b(?:mot|terme)\b\s*[:«"']?\s*([\p{L}\p{N}_-]+)/iu)?.[1];
     const candidate = explicitTerm ?? this.termesRecherche(question).at(-1);
     return candidate?.trim() || null;
+  }
+
+  private async construireContextePersonnel(utilisateurId: string): Promise<string> {
+    const requestInclude = {
+      service: { select: { nameFr: true } },
+    };
+    const [profile, requests, appointments, payments, complaints, notifications] = await Promise.all([
+    this.prisma.user.findUnique({
+      where: { id: utilisateurId },
+      select: { nom: true, email: true, phone: true, cin: true, locale: true, status: true },
+    }),
+    this.prisma.serviceRequest.findMany({
+        where: { userId: utilisateurId },
+        orderBy: { updatedAt: 'desc' },
+        take: 30,
+        include: {
+          ...requestInclude,
+          attachments: { select: { label: true, originalName: true, extractedText: true } },
+          history: { orderBy: { createdAt: 'asc' }, select: { status: true, comment: true, createdAt: true } },
+        },
+      }),
+      this.prisma.appointment.findMany({
+        where: { userId: utilisateurId },
+        orderBy: { startsAt: 'desc' },
+        take: 30,
+        include: {
+          request: {
+            select: { title: true, service: { select: { nameFr: true } } },
+          },
+        },
+      }),
+      this.prisma.payment.findMany({
+        where: { userId: utilisateurId },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        include: {
+          request: {
+            select: { title: true, service: { select: { nameFr: true } } },
+          },
+        },
+      }),
+      this.prisma.citizenComplaint.findMany({
+        where: { userId: utilisateurId },
+        orderBy: { updatedAt: 'desc' },
+        take: 30,
+        include: {
+          documentRequest: {
+            select: { title: true, service: { select: { nameFr: true } } },
+          },
+        },
+      }),
+      this.prisma.notification.findMany({
+        where: { userId: utilisateurId },
+        orderBy: { createdAt: 'desc' },
+        take: 30,
+        select: { title: true, message: true, status: true, createdAt: true },
+      }),
+    ]);
+    const date = (value: Date) => new Intl.DateTimeFormat('fr-FR', {
+      dateStyle: 'short',
+      timeZone: 'Indian/Antananarivo',
+    }).format(value);
+    const sections = [
+      profile ? `Mon profil :\n${[
+        profile.nom ? `Nom : ${profile.nom}` : '',
+        profile.email ? `Courriel : ${profile.email}` : '',
+        profile.phone ? `Téléphone : ${profile.phone}` : '',
+        profile.cin ? `CIN : ${profile.cin}` : '',
+        `Langue du compte : ${profile.locale}`,
+        `État du compte : ${profile.status}`,
+      ].filter(Boolean).join('\n')}` : '',
+      requests.length ? `Mes demandes :\n${requests.map((request) => [
+        `- ${request.title ?? request.service.nameFr} | service : ${request.service.nameFr} | statut : ${request.status} | mise à jour : ${date(request.updatedAt)}`,
+        request.description ? `  Détails : ${request.description.slice(0, 500)}` : '',
+        request.formData ? `  Formulaire : ${JSON.stringify(request.formData).slice(0, 1000)}` : '',
+        request.history.length
+          ? `  Historique : ${request.history.map((event) => `${date(event.createdAt)} ${event.status}${event.comment ? ` (${event.comment.slice(0, 200)})` : ''}`).join(' ; ')}`
+          : '',
+        request.attachments.length
+          ? `  Pièces : ${request.attachments.map((attachment) => `${attachment.label ?? attachment.originalName}${attachment.extractedText ? ` — texte extrait : ${attachment.extractedText.slice(0, 500)}` : ''}`).join(' ; ')}`
+          : '',
+      ].filter(Boolean).join('\n')).join('\n')}` : '',
+      appointments.length ? `Mes rendez-vous :\n${appointments.map((appointment) =>
+        `- ${appointment.ticketReference ?? appointment.id} | ${date(appointment.startsAt)} | ${appointment.office} | statut : ${appointment.status}${appointment.request ? ` | démarche : ${appointment.request.title ?? appointment.request.service.nameFr}` : ''}`,
+      ).join('\n')}` : '',
+      payments.length ? `Mes paiements :\n${payments.map((payment) =>
+        `- ${payment.amount.toString()} | ${payment.status} | ${date(payment.createdAt)}${payment.request ? ` | démarche : ${payment.request.title ?? payment.request.service.nameFr}` : ''}`,
+      ).join('\n')}` : '',
+      complaints.length ? `Mes réclamations :\n${complaints.map((complaint) =>
+        `- ${complaint.reason} | statut : ${complaint.status} | ${date(complaint.updatedAt)}${complaint.details ? ` | détails : ${complaint.details.slice(0, 500)}` : ''}${complaint.adminResponse ? ` | réponse : ${complaint.adminResponse.slice(0, 500)}` : ''}`,
+      ).join('\n')}` : '',
+      notifications.length ? `Mes notifications récentes :\n${notifications.map((notification) =>
+        `- ${date(notification.createdAt)} | ${notification.title} | ${notification.status} | ${notification.message.slice(0, 300)}`,
+      ).join('\n')}` : '',
+    ].filter(Boolean);
+    return sections.length
+      ? `Données du compte connecté (exclusivement) :\n${sections.join('\n\n')}`
+      : '';
   }
 
   private async rechercherDansDocumentsPersonnels(
@@ -211,6 +288,7 @@ export class RagService {
         timeZone: 'Indian/Antananarivo',
       }).format(request.createdAt);
       const excerpt = [
+        'Portée : Demande personnelle',
         `Demande : ${request.title ?? request.service.nameFr}`,
         `Service : ${request.service.nameFr}`,
         `Statut : ${request.status}`,
@@ -228,7 +306,7 @@ export class RagService {
     return { hits, unreadableCount };
   }
 
-  private reponseRechercheDocumentPersonnelle(
+  private reponseRechercheDocument(
     term: string,
     hits: Array<{ contenu: string }>,
     language: 'fr' | 'mg',
@@ -239,11 +317,38 @@ export class RagService {
         const separator = line.indexOf(': ');
         return separator < 0 ? ['', ''] : [line.slice(0, separator), line.slice(separator + 2)];
       }));
-      const title = fields['Demande'] ?? 'Document';
-      const service = fields['Service'] ? ` — ${fields['Service']}` : '';
-      const status = fields['Statut'] ? ` (${fields['Statut']})` : '';
-      const matched = fields['Informations correspondantes'] ?? fields['Pièces correspondantes'];
-      return `- ${title}${service}${status}${matched ? ` — ${matched}` : ''}`;
+      const title = fields['Document'] ?? fields['Demande'] ?? 'Document';
+      const source = fields['Portée']
+        ? language === 'mg' ? ' — ao amin’ny kaontinao' : ` — ${fields['Portée']}`
+        : '';
+      const status = language === 'mg'
+        ? ({
+          DRAFT: 'Drafitra',
+          SUBMITTED: 'Nalefa',
+          IN_REVIEW: 'Eo am-pandinihana',
+          IN_PROGRESS: 'Eo am-panatanterahana',
+          NEEDS_INFO: 'Mila fanazavana fanampiny',
+          APPROVED: 'Nankatoavina',
+          REJECTED: 'Nolavina',
+          COMPLETED: 'Vita',
+          CANCELLED: 'Nofoanana',
+        } as Record<string, string>)[fields['Statut']] ?? fields['Statut']
+        : fields['Statut'];
+      const details = [
+        fields['Référence'],
+        fields['Type'] ? `${language === 'mg' ? 'Karazana' : 'Type'} : ${fields['Type']}` : '',
+        fields['Date'] ? `${language === 'mg' ? 'Daty' : 'Date'} : ${fields['Date']}` : '',
+        status ? `${language === 'mg' ? 'Toe-javatra' : 'Statut'} : ${status}` : '',
+        fields['Service'] ? `${language === 'mg' ? 'Sampan-draharaha' : 'Service'} : ${fields['Service']}` : '',
+        fields['Informations correspondantes']
+          ? `${language === 'mg' ? 'Mombamomba mifandraika' : 'Informations correspondantes'} : ${fields['Informations correspondantes']}`
+          : '',
+        fields['Pièces correspondantes']
+          ? `${language === 'mg' ? 'Antontan-taratasy mifandraika' : 'Pièces correspondantes'} : ${fields['Pièces correspondantes']}`
+          : '',
+        fields['Extrait'] ? `${language === 'mg' ? 'Ampahany hita' : 'Extrait'} : ${fields['Extrait']}` : '',
+      ].filter(Boolean).join(' · ');
+      return `- ${title}${source}${details ? ` — ${details}` : ''}`;
     });
     const unreadableNotice = unreadableCount
       ? language === 'mg'
@@ -251,7 +356,7 @@ export class RagService {
         : `\n${unreadableCount} pièce(s) n’ont pas pu être lue(s), le résultat peut donc être incomplet.`
       : '';
     return language === 'mg'
-      ? `Ireto ny antontan-taratasy ao amin’ny kaontinao ahitana ny teny hoe « ${term} »:\n${documents.join('\n')}${unreadableNotice}`
+      ? `Nahita antontan-taratasy ${hits.length} tao amin’ny kaontinao aho, izay misy ny teny hoe « ${term} »:\n${documents.join('\n')}${unreadableNotice}`
       : `J’ai trouvé ${hits.length} document(s) dans votre compte contenant le mot « ${term} » :\n${documents.join('\n')}${unreadableNotice}`;
   }
 
@@ -319,10 +424,33 @@ export class RagService {
     return texte.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
-  private detecterLangue(question: string): 'fr' | 'mg' {
+  private detecterLangue(question: string, locale?: string): 'fr' | 'mg' {
     const normalized = this.normaliserTexte(question);
-    const malagasyMarkers = ['salama', 'ahoana', 'manao', 'hanaovana', 'fomba', 'inona', 'aiza', 'oviana', 'ohatrinona', 'firy', 'mila', 'takiana', 'taratasy', 'antontan', 'fanambarana', 'fahazoan', 'fanavaozana', 'fitarainana', 'fikambanana', 'sonia', 'karapanondro', 'kara-panondro', 'very', 'handray', 'haka', 'afaka', 'azafady', 'ianao', 've', 'ny', 'aminny'];
-    return malagasyMarkers.some((marker) => new RegExp(`\\b${marker}\\b`).test(normalized)) ? 'mg' : 'fr';
+    if (/\b(?:en malgache|en malagasy|teny malagasy|amin ny teny malagasy)\b/.test(normalized)) return 'mg';
+    if (/\b(?:en francais|en français|teny frantsay|amin ny teny frantsay)\b/.test(normalized)) return 'fr';
+
+    const words = normalized.match(/[\p{L}\p{N}]+/gu) ?? [];
+    const malagasyMarkers = new Set([
+      'aho', 'ahoana', 'ahy', 'aiza', 'akory', 'afaka', 'amin', 'ampio', 'anao', 'antsika',
+      'anay', 'azafady', 'dia', 'efa', 'fa', 'firy', 'fomba', 'hanaovana', 'handray',
+      'hangataka', 'ianao', 'izy', 'izaho', 'izahay', 'isika', 'manao', 'manana', 'mba',
+      'mila', 'misy', 'moa', 'momba', 'nahoana', 'nahaterahana', 'nareo', 'ny', 'oviana',
+      'raha', 'rahoviana', 'salama', 'taratasy', 'tsy', 've', 'very', 'aminny', 'inona',
+      'tompoko', 'fitarainana', 'fangatahana', 'sonia', 'fahazoan', 'fanavaozana',
+      'karapanondro', 'fokontany', 'rahampitso', 'androany', 'ohatrinona', 'teny',
+    ]);
+    const frenchMarkers = new Set([
+      'au', 'aux', 'avec', 'avez', 'bonjour', 'comment', 'dans', 'des', 'est', 'et', 'faire',
+      'je', 'la', 'le', 'les', 'mes', 'mon', 'ma', 'nous', 'où', 'pour', 'pouvez', 'quand',
+      'quel', 'quelle', 'quels', 'quelles', 'qui', 'quoi', 'ou', 'reponds', 'sont', 'sur', 'un',
+      'une', 'vous', 'votre', 'vos', 'contient', 'contiennent', 'document', 'documents',
+      'demande', 'demandes', 'rendez', 'suivre', 'montrer', 'trouver',
+    ]);
+    const malagasyScore = words.reduce((score, word) => score + (malagasyMarkers.has(word) ? 1 : 0), 0);
+    const frenchScore = words.reduce((score, word) => score + (frenchMarkers.has(word) ? 1 : 0), 0);
+    if (malagasyScore > frenchScore) return 'mg';
+    if (frenchScore > malagasyScore) return 'fr';
+    return locale?.toLowerCase().startsWith('mg') ? 'mg' : 'fr';
   }
 
   private contexteModele(type: import('@prisma/client').RequestType) {

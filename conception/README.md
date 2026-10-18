@@ -16,5 +16,6 @@ Ce dossier rassemble la conception fonctionnelle et les modeles de donnees de la
 7. [Présentation de l'application pour le mémoire](07-presentation-application-memoire.txt)
 8. [Cahier des charges fonctionnel — version non technique](08-cahier-des-charges-fonctionnel.md)
 9. [Cahier des charges technique](09-cahier-des-charges-technique.md)
+10. [Services et fonctionnalités du backend](10-services-et-fonctionnalites-backend.md)
 
 Les schémas Mermaid peuvent être ouverts dans VS Code avec une extension Mermaid ou intégrés dans un document Markdown.

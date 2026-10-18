@@ -43,7 +43,7 @@ Les fichiers sont stockés dans le volume d'uploads du backend dans le déploiem
 - Le navigateur communique avec l'API NestJS en JSON et multipart pour les dépôts de fichiers.
 - L'API est l'autorité pour l'authentification, les autorisations, les transitions de statuts et la sélection des données.
 - PostgreSQL conserve les données métier structurées et l'OCR persistant des pièces de dossier.
-- Qdrant sert à la recherche vectorielle du fonds documentaire ; une recherche textuelle exacte doit également exister là où le cas d'usage l'exige.
+- Qdrant peut indexer les documents administratifs pour les fonctions de gestion qui y sont autorisées ; il ne constitue jamais une source du chat ou de la recherche IA d'un compte.
 - Le service IA reste un composant séparé ; une erreur de ce service doit être distinguée d'une absence de résultat.
 - Les PDF sont produits par l'API à partir des données autorisées et des ressources disponibles.
 
@@ -72,20 +72,27 @@ Les fichiers sont stockés dans le volume d'uploads du backend dans le déploiem
 
 ### 4.3 Recherche dans les documents personnels via le chat
 
-- Le contrôleur transmet au service RAG l'identifiant du compte authentifié ; l'identifiant ne doit pas provenir du texte de la question ou d'un champ choisi librement par le navigateur.
-- Une intention de recherche documentaire exacte (ex. « quels documents contiennent le mot X ? ») doit d'abord interroger les demandes du seul compte connecté.
+- Toute fonction IA qui lit, recherche, résume, classe ou transmet des données métier doit agir dans le périmètre du compte authentifié. L'IA ne doit jamais lire, analyser, restituer ou laisser inférer les données privées d'un autre compte, quel que soit le rôle applicatif.
+- Le contrôleur transmet au service RAG l'identifiant issu de l'identité validée par `AuthGuard` ; l'identifiant ne provient jamais du texte de la question ni d'un champ libre du navigateur. L'absence d'identité bloque la requête.
+- Chaque requête de données personnelles est filtrée côté serveur par le propriétaire (`userId` ou relation équivalente) avant lecture ; un identifiant de conversation ou de ressource fourni par le client est revérifié contre ce même propriétaire.
+- Une intention de recherche documentaire exacte (ex. « quels documents contiennent le mot X ? ») interroge les demandes et pièces du seul compte connecté.
 - Les champs de formulaire sont recherchés textuellement ; les pièces PDF/images sont recherchées dans le champ OCR persistant `RequestAttachment.extractedText`.
+- Lorsqu'une question porte sur les informations du compte, le contexte peut comprendre les demandes, rendez-vous, paiements, réclamations et notifications rattachés au seul identifiant authentifié ; chaque requête relationnelle applique le filtre propriétaire avant de lire les données.
+- Ne jamais transmettre au modèle les mots de passe, codes OTP, secrets d'authentification ou données d'un autre compte. Ne sélectionner que les champs nécessaires à la question et borner le volume des textes transmis.
 - Pour les anciennes pièces sans OCR, le serveur peut lancer l'OCR à la demande, de manière bornée, puis persister le résultat. Une indisponibilité ou un fichier inaccessible doit être signalé comme limite et journalisé.
 - Les résultats mentionnent le titre/service, le statut et les pièces correspondantes sans exposer le chemin de stockage ni le texte intégral non nécessaire.
-- Les recherches du citoyen n'interrogent pas globalement les pièces des autres citoyens.
-- Les recherches générales dans le fonds de la Préfecture restent séparées et soumises aux droits de consultation applicables.
+- Le chat et la recherche IA ne consultent ni le fonds documentaire global ni Qdrant ; les droits d'accès au back-office ne constituent pas une dérogation à l'isolation des comptes dans ces fonctions.
+- Les données envoyées au modèle génératif sont limitées aux extraits pertinents, déjà filtrés par propriétaire. Ne pas inclure des données privées d'un tiers dans un prompt, une source, un historique ou des journaux.
+- La langue de chaque réponse est choisie d'après les mots de la question ; la langue du compte ne sert qu'en cas d'ambiguïté. Répondre en malgache clair à une question en malgache et en français à une question en français, sans mélanger les langues hors noms propres, références ou codes.
+- Les réponses dans les deux langues doivent préserver le même contenu factuel, les mêmes nombres, dates, étapes, conditions et conclusion ; traduire les explications et consignes, pas les identifiants officiels.
 - Enregistrer la question/réponse dans la conversation du compte, en ne persistant comme sources que les identifiants de chunks réellement liés à ceux-ci.
-- Ajouter des tests d'autorisation : deux comptes avec données distinctes, absence de fuite croisée, recherche exacte trouvée/non trouvée, OCR manquant, fichier manquant et service OCR indisponible.
+- Étendre les mêmes contrôles à toute nouvelle fonctionnalité IA branchée sur le profil ou d'autres données du compte : filtrage propriétaire en base, sélection minimale et absence de repli non cloisonné.
+- Ajouter des tests d'autorisation : deux comptes avec données distinctes, absence de fuite croisée y compris pour un compte administrateur, conversation étrangère refusée, recherche exacte trouvée/non trouvée, OCR manquant, fichier manquant et service OCR indisponible.
 
 ### 4.4 Recherche du fonds et génération IA
 
 - Conserver les métadonnées et chunks dans PostgreSQL ; indexer les vecteurs dans Qdrant avec identifiants de document et contenu nécessaire au résultat.
-- La recherche lexicale doit pouvoir compléter la recherche sémantique ; une panne de Qdrant ne doit pas être transformée silencieusement en réponse certaine.
+- Le moteur vectoriel global n'est pas une source de contexte pour le chat d'un utilisateur ; toute fonction future de recherche vectorielle personnalisée doit embarquer et vérifier le propriétaire de chaque point avant de retourner son contenu.
 - Les réponses doivent être fondées sur le contexte disponible, rester dans le domaine préfectoral et ne pas inventer de pièces, tarifs ou règles.
 - Les réponses doivent identifier ou restituer leurs sources lorsque des sources existent.
 - En cas de contexte absent ou d'incertitude, répondre explicitement qu'aucun document pertinent n'a été trouvé ou demander une précision.
@@ -189,12 +196,14 @@ Les contrats HTTP de production devront être documentés et versionnés lorsqu'
 - `npx prisma validate` réussit ; les migrations sont applicables sur une base vierge et sur une base contenant des données de référence.
 - Tests unitaires pour les règles de référence quotidienne, extraction d'intention de recherche, normalisation de texte, séparation des lignes et messages de non-détection.
 - Tests d'intégration pour droits, transitions métier, création de dossier, OCR, génération PDF, références, filtres admin et isolation entre comptes.
+- Tests d'isolation des données pour toutes les routes IA : deux comptes ne peuvent ni retrouver ni recevoir par réponse, source, historique ou recherche les données de l'autre, y compris lorsqu'un des comptes a un rôle d'administration.
 - Tests frontend des formulaires, états d'erreur, téléchargement et visualisation de l'image numérisée.
 
 ### Recette métier
 
 - Chaque rôle ne peut exécuter que ses opérations autorisées.
 - Un citoyen ne peut jamais consulter les ressources d'un autre compte.
+- Aucune réponse, source, recherche ou conversation IA ne contient de données privées d'un autre compte ; les tests couvrent également les utilisateurs d'administration.
 - Les pièces attendues et règles d'une démarche sont cohérentes avec les règles approuvées par la Préfecture.
 - Les recherches exactes et sémantiques ne confondent pas absence de résultat et indisponibilité d'un service.
 - Les références de rendez-vous suivent le compteur quotidien attendu, y compris sous réservations concurrentes.
