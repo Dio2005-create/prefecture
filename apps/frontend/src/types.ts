@@ -20,6 +20,53 @@ export type RequestType =
   | 'ACCREDITATION'
   | 'ADMINISTRATIVE_AUTHORIZATION';
 
+export type FirearmRequestType =
+  | 'HOLDING_PERMIT'
+  | 'CARRY_PERMIT'
+  | 'REGISTER_FIREARM'
+  | 'RENEW_PERMIT'
+  | 'DEREGISTER_FIREARM'
+  | 'TRANSFER_FIREARM';
+
+export interface FirearmRecord {
+  id: string;
+  weaponType: string;
+  brand: string;
+  model: string;
+  serialNumber: string;
+  caliber: string | null;
+  acquiredAt: string;
+  origin: string;
+  isActive: boolean;
+  createdAt: string;
+  permits?: FirearmPermitRecord[];
+  history?: Array<{ action: string; details: Record<string, unknown>; createdAt: string }>;
+}
+
+export interface FirearmPermitRecord {
+  id: string;
+  type: 'HOLDING' | 'CARRY';
+  status: 'ACTIVE' | 'EXPIRED' | 'REVOKED' | 'REPLACED';
+  issuedAt: string;
+  expiresAt: string;
+  firearm?: Pick<FirearmRecord, 'id' | 'weaponType' | 'brand' | 'model' | 'serialNumber'> | null;
+}
+
+export interface FirearmRequestRecord {
+  id: string;
+  type: FirearmRequestType;
+  status: 'PENDING' | 'IN_REVIEW' | 'NEEDS_INFO' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  data: Record<string, unknown>;
+  decisionComment?: string | null;
+  decidedAt?: string | null;
+  createdAt: string;
+  user?: { id: string; nom: string | null; email: string | null; phone: string | null; cin: string | null };
+  firearm?: Pick<FirearmRecord, 'id' | 'weaponType' | 'brand' | 'model' | 'serialNumber' | 'caliber' | 'isActive'> | null;
+  attachments: Array<{ id: string; label: string; originalName: string; mimeType?: string | null; size?: number | null; createdAt: string }>;
+  issuedPermit?: FirearmPermitRecord | null;
+  history?: Array<{ action: string; details: Record<string, unknown>; createdAt: string; actor?: { id: string; nom: string | null } | null }>;
+}
+
 export interface Category {
   id: string;
   libelle: string;

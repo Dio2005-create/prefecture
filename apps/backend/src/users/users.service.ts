@@ -57,6 +57,7 @@ export class UsersService {
         locale: true,
         createdAt: true,
         roles: { select: { role: { select: { name: true } } } },
+        _count: { select: { firearms: { where: { isActive: true } } } },
       },
     });
   }

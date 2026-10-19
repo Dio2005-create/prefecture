@@ -38,6 +38,10 @@ Ne sont pas considérées comme acquises sans intégration et recette : connexio
 
 Les fichiers sont stockés dans le volume d'uploads du backend dans le déploiement Compose actuel. MinIO est déclaré dans l'infrastructure, mais son utilisation comme stockage effectif des fichiers métier doit être validée avant d'être considérée comme un prérequis réalisé.
 
+### 3.1.1 Services Docker
+
+Le détail des conteneurs, ports, dépendances, volumes et flux est décrit dans [Services Docker et infrastructure](11-services-docker-et-infrastructure.md). En résumé, Compose déclare PostgreSQL, Qdrant, MinIO, le service IA FastAPI, le backend NestJS et le frontend React. Ollama n'est pas un conteneur Compose dans la configuration actuelle : `ai-service` le contacte sur l'hôte via `host.docker.internal:11434`. MinIO est également démarré, mais les fichiers métier sont actuellement conservés dans `uploads_data` et non dans MinIO.
+
 ### 3.2 Principes d'architecture
 
 - Le navigateur communique avec l'API NestJS en JSON et multipart pour les dépôts de fichiers.

@@ -38,7 +38,7 @@ export const requestRequirements: Record<RequestType, RequestRequirements> = {
     attachments: [required('acte-naissance', 'Acte de naissance (moins d’un an)'), required('residence', 'Certificat de résidence (moins de 3 mois)'), required('photos', 'Photo d’identité 4 x 4', { minFiles: 1 })],
   },
   CIN_RENEWAL: {
-    fields: [field('nom', 'Nom et prénoms'), field('cin', 'Ancien numéro de CIN'), field('dateDelivranceCin', 'Date de délivrance de l’ancienne CIN', 'date'), field('dateNaissance', 'Date de naissance', 'date'), field('adresse', 'Adresse actuelle', 'textarea'), field('motif', 'Motif (usure, perte ou autre)', 'textarea'), field('tailleCm', 'Taille (cm)', 'number')],
+    fields: [field('nom', 'Nom et prénoms'), field('cin', 'Ancien numéro de CIN'), field('dateDelivranceCin', 'Date de délivrance de l’ancienne CIN', 'date'), field('dateNaissance', 'Date de naissance', 'date'), field('adresse', 'Adresse actuelle', 'textarea'), field('motif', 'Motif', 'select', true, ['Usure', 'Perte']), field('tailleCm', 'Taille (cm)', 'number')],
     attachments: [...cinPair('ancienne-cin', 'Ancienne CIN'), required('residence', 'Certificat de résidence'), required('photos', 'Photo d’identité 4 x 4'), optional('declaration-perte', 'Déclaration de perte (si applicable)')],
   },
   GOOD_CHARACTER_CERTIFICATE: {
@@ -95,20 +95,56 @@ export const requestRequirements: Record<RequestType, RequestRequirements> = {
   },
 };
 
-export const getRequestRequirements = (type: RequestType) => requestRequirements[type];
+const normalizeReason = (value: unknown) => {
+  if (typeof value !== 'string') return '';
+  return value
+    .trim()
+    .toLocaleLowerCase('fr')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+};
+
+export const getRequestRequirements = (type: RequestType, formData: Record<string, unknown> = {}) => {
+  const requirements = requestRequirements[type];
+  if (type !== RequestType.CIN_RENEWAL) return requirements;
+
+  const commonAttachments = requirements.attachments.filter(
+    (item) => item.key !== 'ancienne-cin-recto' && item.key !== 'ancienne-cin-verso' && item.key !== 'declaration-perte',
+  );
+  const reason = normalizeReason(formData.motif);
+  if (reason === 'perte') {
+    return {
+      ...requirements,
+      attachments: [...commonAttachments, required('declaration-perte', 'Déclaration de perte')],
+    };
+  }
+  if (reason === 'usure') {
+    return {
+      ...requirements,
+      attachments: [
+        ...commonAttachments,
+        ...cinPair('ancienne-cin', 'Ancienne CIN'),
+      ],
+    };
+  }
+  return { ...requirements, attachments: commonAttachments };
+};
 
 export function getRequestCompleteness(
   type: RequestType,
   formData: Record<string, unknown>,
   attachments: Array<{ label?: string | null }>,
 ) {
-  const requirements = getRequestRequirements(type);
+  const requirements = getRequestRequirements(type, formData);
   const missingFields = requirements.fields
     .filter((item) => item.required && (formData[item.name] === undefined || String(formData[item.name]).trim() === ''))
     .map((item) => item.label);
   const invalidFields = requirements.fields.flatMap((item) => {
     const value = formData[item.name];
     if (value === undefined || String(value).trim() === '') return [];
+    if (item.type === 'select' && !item.options?.some((option) => option.toLocaleLowerCase('fr') === String(value).trim().toLocaleLowerCase('fr'))) {
+      return [item.label];
+    }
     if (item.type === 'date') {
       const date = String(value);
       const parsed = new Date(`${date}T00:00:00.000Z`);

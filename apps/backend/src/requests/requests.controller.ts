@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req, Res, UploadedFile, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, UploadedFile, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import type { Response } from 'express';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from '../auth/auth.guard';
@@ -18,8 +18,8 @@ export class RequestsController {
   }
 
   @Get('requirements/:type')
-  requirements(@Param('type') type: RequestType) {
-    return this.requestsService.getRequirements(type);
+  requirements(@Param('type') type: RequestType, @Query('motif') motif?: string) {
+    return this.requestsService.getRequirements(type, motif);
   }
 
   @Get('models/:type/pdf')

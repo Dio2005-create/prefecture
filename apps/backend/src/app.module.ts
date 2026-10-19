@@ -11,9 +11,10 @@ import { ComplaintsModule } from './complaints/complaints.module';
 import { AgentModule } from './agent/agent.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AppointmentsModule } from './appointments/appointments.module';
+import { FirearmsModule } from './firearms/firearms.module';
 
 @Module({
   controllers: [AppController],
-  imports: [PrismaModule, AiModule, DocumentsModule, RagModule, AuthModule, UsersModule, RequestsModule, ComplaintsModule, AgentModule, NotificationsModule, AppointmentsModule],
+  imports: [PrismaModule, AiModule, DocumentsModule, RagModule, AuthModule, UsersModule, RequestsModule, ComplaintsModule, AgentModule, NotificationsModule, AppointmentsModule, FirearmsModule],
 })
 export class AppModule {}

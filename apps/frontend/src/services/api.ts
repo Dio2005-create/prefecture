@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { ChatConversation, CitizenComplaint, CitizenRequest, Document, NotificationItem, PaginatedDocuments, PrefectureService, RagResponse, RequestRequirements, SearchHit, RequestType } from '../types';
+import type { ChatConversation, CitizenComplaint, CitizenRequest, Document, FirearmPermitRecord, FirearmRecord, FirearmRequestRecord, FirearmRequestType, NotificationItem, PaginatedDocuments, PrefectureService, RagResponse, RequestRequirements, SearchHit, RequestType } from '../types';
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:3000' });
 api.interceptors.request.use((config) => {
@@ -40,7 +40,8 @@ export const authService = {
 
 export const prefectureService = {
   listServices: async () => (await api.get<PrefectureService[]>('/requests/services')).data,
-  requirements: async (type: RequestType) => (await api.get<RequestRequirements>(`/requests/requirements/${type}`)).data,
+  requirements: async (type: RequestType, motif?: string) =>
+    (await api.get<RequestRequirements>(`/requests/requirements/${type}`, { params: motif ? { motif } : undefined })).data,
   listFees: async () => (await api.get<Partial<Record<RequestType, number>>>('/requests/fees')).data,
   listRequests: async () => (await api.get<CitizenRequest[]>('/requests')).data,
   createRequest: async (payload: { serviceId: string; type: string; title?: string; description?: string; formData?: Record<string, unknown> }) =>
@@ -112,6 +113,36 @@ export const complaintService = {
     (await api.get<Blob>(`/complaints/${id}/attachments/${attachmentId}`, { responseType: 'blob' })).data,
 };
 
+export const firearmsService = {
+  listMine: async () => (await api.get<FirearmRecord[]>('/firearms')).data,
+  listMyPermits: async () => (await api.get<FirearmPermitRecord[]>('/firearms/permits')).data,
+  listMyRequests: async () => (await api.get<FirearmRequestRecord[]>('/firearms/requests')).data,
+  createRequest: async (payload: { type: FirearmRequestType; data: Record<string, string>; files: File[] }) => {
+    const form = new FormData();
+    form.append('type', payload.type);
+    form.append('data', JSON.stringify(payload.data));
+    form.append('attachmentLabels', JSON.stringify(payload.files.map((_, index) => `Justificatif ${index + 1}`)));
+    payload.files.forEach((file) => form.append('attachments', file));
+    return (await api.post<FirearmRequestRecord>('/firearms/requests', form)).data;
+  },
+  downloadAttachment: async (requestId: string, attachmentId: string) =>
+    (await api.get<Blob>(`/firearms/requests/${requestId}/attachments/${attachmentId}`, { responseType: 'blob' })).data,
+  downloadOfficialDocument: async (requestId: string) =>
+    (await api.get<Blob>(`/firearms/requests/${requestId}/document`, { responseType: 'blob' })).data,
+  listAdminRequests: async (status?: string) =>
+    (await api.get<FirearmRequestRecord[]>('/firearms/admin/requests', { params: status ? { status } : undefined })).data,
+  decideRequest: async (id: string, payload: { status: 'IN_REVIEW' | 'NEEDS_INFO' | 'APPROVED' | 'REJECTED'; comment?: string; expiresAt?: string }) =>
+    (await api.patch<FirearmRequestRecord>(`/firearms/admin/requests/${id}/decision`, payload)).data,
+  getDossier: async (userId: string) =>
+    (await api.get<{ id: string; nom: string | null; email: string | null; phone: string | null; cin: string | null; firearms: FirearmRecord[]; firearmRequests: FirearmRequestRecord[] }>(`/firearms/admin/citizens/${userId}`)).data,
+  searchBySerial: async (serial: string) =>
+    (await api.get<FirearmRecord & { owner: { id: string; nom: string | null; cin: string | null }; history: Array<{ action: string; details: Record<string, unknown>; createdAt: string }> }>('/firearms/admin/search', { params: { serial } })).data,
+  stats: async () =>
+    (await api.get<{ firearms: number; activeFirearms: number; requests: number; pendingRequests: number; activePermits: number; expiringPermits: number; requestsByStatus: Record<string, number>; firearmsByType: Array<{ weaponType: string; count: number }> }>('/firearms/admin/stats')).data,
+  downloadReport: async () =>
+    (await api.get<Blob>('/firearms/admin/report.csv', { responseType: 'blob' })).data,
+};
+
 export const appointmentService = {
   available: async (date?: string) => (await api.get('/appointments/available', { params: date ? { date } : undefined })).data,
   list: async () => (await api.get('/appointments')).data,
@@ -147,7 +178,7 @@ export const appointmentService = {
 };
 
 export const userService = {
-  list: async () => (await api.get<Array<{ id: string; email: string | null; nom: string | null; phone: string | null; role: string; status: string; createdAt: string; roles?: Array<{ role: { name: string } }> }>>('/users')).data,
+  list: async () => (await api.get<Array<{ id: string; email: string | null; nom: string | null; phone: string | null; role: string; status: string; createdAt: string; roles?: Array<{ role: { name: string } }>; _count: { firearms: number } }>>('/users')).data,
   updateCitizenStatus: async (id: string, status: 'ACTIVE' | 'DISABLED') =>
     (await api.patch<{ id: string; email: string | null; nom: string | null; role: string; status: string }>(`/users/${id}/status`, { status })).data,
   reactivationRequests: async () => (await api.get<Array<{ id: string; reason: string | null; status: string; createdAt: string; user: { id: string; nom: string | null; email: string | null; phone: string | null; status: string } }>>('/users/reactivations')).data,

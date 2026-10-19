@@ -29,6 +29,8 @@ import { CitizenSettingsPage } from './pages/CitizenSettingsPage';
 import { CitizenProfilePage } from './pages/CitizenProfilePage';
 import { AdminSettingsPage } from './pages/RoleFeaturePages';
 import { AdminComplaintsPage, CitizenComplaintsPage } from './pages/ComplaintsPage';
+import { FirearmsPage } from './pages/FirearmsPage';
+import { AdminFirearmsPage } from './pages/AdminFirearmsPage';
 import { PreferencesProvider, usePreferences } from './preferences';
 
 const queryClient = new QueryClient();
@@ -88,6 +90,7 @@ export default function App() {
                       <Route path="notifications" element={<NotificationsPage />} />
                       <Route path="rendez-vous" element={<AppointmentsPage />} />
                       <Route path="reclamations" element={<CitizenComplaintsPage />} />
+                      <Route path="armements" element={<FirearmsPage />} />
                       <Route path="signalements" element={<Navigate to="/front/reclamations" replace />} />
                       <Route path="assistant" element={<CitizenAssistantPage />} />
                       <Route path="parametres" element={<CitizenSettingsPage />} />
@@ -109,6 +112,7 @@ export default function App() {
                       <Route path="accueil" element={<AdminDashboardPage />} />
                       <Route path="workflow" element={<AdminWorkflowPage />} />
                       <Route path="reclamations" element={<AdminComplaintsPage />} />
+                      <Route path="armements" element={<AdminFirearmsPage />} />
                       <Route path="notifications" element={<NotificationsPage />} />
                       <Route path="associations" element={<AdminAssociationPage />} />
                       <Route path="pilotage" element={<DashboardPage />} />

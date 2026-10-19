@@ -64,3 +64,17 @@ Variables IA : `OLLAMA_URL`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_CHAT_MODEL`, `QDR
 Le service FastAPI expose aussi `POST /ocr`, `POST /extract-text`, `POST /classify`, `POST /embeddings` et `POST /generate`. Les fichiers PDF/images nécessitent encore l'installation d'un moteur OCR local (PaddleOCR ou Tesseract).
 
 Pour la migration pgvector : `docker compose exec backend npx prisma migrate deploy`.
+
+## Module Contrôle des armements
+
+Le module permet aux citoyens de soumettre des demandes de permis de détention ou de port, d’enregistrement, de renouvellement, de radiation et de transfert. Les armes ne sont ajoutées au registre qu’après validation administrative. Les citoyens ne peuvent consulter que leurs propres armes, permis, demandes et pièces justificatives; la recherche par numéro de série, les dossiers citoyens, l’historique complet et les rapports sont réservés aux administrateurs.
+
+Les routes principales sont `GET /firearms`, `GET /firearms/permits`, `GET /firearms/requests` et `POST /firearms/requests` (multipart avec les justificatifs). L’administration utilise `GET /firearms/admin/requests`, `PATCH /firearms/admin/requests/:id/decision`, `GET /firearms/admin/search?serial=...`, `GET /firearms/admin/citizens/:id`, `GET /firearms/admin/stats` et `GET /firearms/admin/report.csv`. Un document officiel est téléchargeable depuis `GET /firearms/requests/:id/document` après approbation.
+
+À déployer avec les autres migrations Prisma :
+
+```powershell
+docker compose exec backend npx prisma migrate deploy
+```
+
+La date d’échéance n’est pas présumée par l’application : l’agent la fixe lors de la validation d’un permis. Les notifications d’échéance sont émises dans les 30 jours précédant l’expiration.

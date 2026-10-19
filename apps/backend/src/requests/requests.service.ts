@@ -38,6 +38,26 @@ const defaultFees: Record<RequestType, number> = {
 };
 const SIMULATED_PAYMENT_PIN = '1234';
 const citizenEditableStatuses = ['DRAFT', 'SUBMITTED', 'PENDING_CHIEF', 'IN_REVIEW', 'PENDING_PREFECT', 'PENDING_PAYMENT', 'IN_PROGRESS', 'NEEDS_INFO'] as const;
+const requestTypesByServiceCode: Record<string, RequestType[]> = {
+  BC: [RequestType.BIRTH_CERTIFICATE],
+  CR: [RequestType.RESIDENCE_CERTIFICATE],
+  CIN: [RequestType.CIN_REQUEST, RequestType.CIN_RENEWAL],
+  AP: [RequestType.BUILDING_PERMIT],
+  LS: [RequestType.LAND_STATUS],
+  BCC: [RequestType.GOOD_CHARACTER_CERTIFICATE],
+  VR: [RequestType.VEHICLE_REGISTRATION],
+  DL: [RequestType.LOSS_DECLARATION],
+  ASSOC: [RequestType.ASSOCIATION_DECLARATION],
+  MANIF: [RequestType.EVENT_AUTHORIZATION],
+  AGREMENT: [RequestType.ACCREDITATION],
+  AUTRE: [
+    RequestType.NATIONALITY_CERTIFICATE,
+    RequestType.COMMERCIAL_LICENSE,
+    RequestType.SIGNATURE_LEGALIZATION,
+    RequestType.SPECIAL_REQUEST,
+    RequestType.ADMINISTRATIVE_AUTHORIZATION,
+  ],
+};
 
 @Injectable()
 export class RequestsService {
@@ -49,8 +69,8 @@ export class RequestsService {
     private readonly ai: FastApiAiService,
   ) {}
 
-  getRequirements(type: RequestType) {
-    const requirements = getRequestRequirements(type);
+  getRequirements(type: RequestType, motif?: string) {
+    const requirements = getRequestRequirements(type, motif ? { motif } : {});
     if (!requirements) throw new NotFoundException('Type de demande introuvable');
     return requirements;
   }
@@ -105,9 +125,12 @@ export class RequestsService {
     if (data.type === RequestType.COMPLAINT) {
       throw new BadRequestException('Les réclamations concernant un document délivré doivent être déposées depuis la page Réclamations.');
     }
-    this.validateFormData(data.type, data.formData ?? {});
     const service = await this.prisma.prefectureService.findUnique({ where: { id: data.serviceId } });
     if (!service) throw new NotFoundException('Service introuvable');
+    if (!requestTypesByServiceCode[service.code]?.includes(data.type)) {
+      throw new BadRequestException('Cette démarche n’est pas disponible dans le service sélectionné');
+    }
+    this.validateFormData(data.type, data.formData ?? {});
     const configuredFee = await this.prisma.platformSetting.findUnique({ where: { key: `fee.${data.type}` } });
     const fee = configuredFee ? Number(configuredFee.value) : defaultFees[data.type];
     if (!Number.isFinite(fee) || fee < 0) throw new BadRequestException('Le tarif de cette démarche est invalide');
@@ -191,7 +214,7 @@ export class RequestsService {
     if (data.type === RequestType.COMPLAINT) {
       throw new BadRequestException('Les réclamations concernant un document délivré doivent être déposées depuis la page Réclamations.');
     }
-    const requirements = getRequestRequirements(data.type);
+    const requirements = getRequestRequirements(data.type, data.formData ?? {});
     this.validateFormData(data.type, data.formData ?? {});
     const labels = data.attachmentLabels ?? [];
     if (labels.length !== files.length) throw new BadRequestException('Chaque pièce jointe doit être associée à son champ de dépôt');
@@ -232,7 +255,7 @@ export class RequestsService {
   }
 
   private validateFormData(type: RequestType, formData: Record<string, unknown>) {
-    const fields = getRequestRequirements(type).fields;
+    const fields = getRequestRequirements(type, formData).fields;
     const missing = fields
       .filter((field) => formData[field.name] === undefined || String(formData[field.name]).trim() === '')
       .map((field) => field.label);
@@ -249,6 +272,13 @@ export class RequestsService {
       }
       if (field.type === 'number' && !Number.isFinite(Number(value))) {
         throw new BadRequestException(`${field.label} : valeur numérique invalide`);
+      }
+      const selectedOption = String(value).trim();
+      const validSelection = field.type === 'select' && (type === RequestType.CIN_RENEWAL && field.name === 'motif'
+        ? field.options?.some((option) => option.toLocaleLowerCase('fr') === selectedOption.toLocaleLowerCase('fr'))
+        : field.options?.includes(selectedOption));
+      if (field.type === 'select' && !validSelection) {
+        throw new BadRequestException(`${field.label} : sélection invalide`);
       }
       if (field.name.toLowerCase().includes('cin') && field.name !== 'cinNif' && !/^\d{12}$/.test(String(value).trim())) {
         throw new BadRequestException(`${field.label} : la CIN doit contenir exactement 12 chiffres`);
@@ -349,7 +379,10 @@ export class RequestsService {
     const isBackOffice = user.role === 'ADMIN' || user.roles?.includes('ADMIN');
     if (!isBackOffice && request.userId !== user.id) throw new ForbiddenException('Vous ne pouvez pas modifier cette demande');
     if (!isBackOffice) this.ensureCitizenCanEdit(request.status);
-    if (!label || !getRequestRequirements(request.type).attachments.some((requirement) => requirement.label === label)) {
+    const requestFormData = request.formData && typeof request.formData === 'object' && !Array.isArray(request.formData)
+      ? request.formData as Record<string, unknown>
+      : {};
+    if (!label || !getRequestRequirements(request.type, requestFormData).attachments.some((requirement) => requirement.label === label)) {
       throw new BadRequestException('Sélectionnez un type de pièce justificative valide');
     }
     if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype ?? '') || (file.size ?? 0) > 10 * 1024 * 1024) {
@@ -522,7 +555,7 @@ export class RequestsService {
         ACCREDITATION: 'DECISION D’AGREMENT',
         ADMINISTRATIVE_AUTHORIZATION: 'AUTORISATION ADMINISTRATIVE',
       };
-      const requestRequirements = getRequestRequirements(request.type);
+      const requestRequirements = getRequestRequirements(request.type, formData);
       const knownFields = new Set(requestRequirements.fields.map((field) => field.name));
       const printableFields = requestRequirements.fields.map((field) => ({
         label: field.label,

@@ -1,26 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Eye, Download, Pencil, Save, X } from 'lucide-react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { prefectureService } from '../services/api';
 import { Pagination } from '../components/ui';
 import type { RequestAttachmentRequirement, RequestType, RequestRequirements } from '../types';
 import { usePreferences } from '../preferences';
 
-const requestTypeByServiceCode: Record<string, RequestType> = {
-  BC: 'BIRTH_CERTIFICATE',
-  CR: 'RESIDENCE_CERTIFICATE',
-  CIN: 'CIN_REQUEST',
-  AP: 'BUILDING_PERMIT',
-  LS: 'LAND_STATUS',
-  BCC: 'GOOD_CHARACTER_CERTIFICATE',
-  VR: 'VEHICLE_REGISTRATION',
-  DL: 'LOSS_DECLARATION',
-  ASSOC: 'ASSOCIATION_DECLARATION',
-  MANIF: 'EVENT_AUTHORIZATION',
-  AGREMENT: 'ACCREDITATION',
-  AUTRE: 'ADMINISTRATIVE_AUTHORIZATION',
+const requestTypesByServiceCode: Record<string, RequestType[]> = {
+  BC: ['BIRTH_CERTIFICATE'],
+  CR: ['RESIDENCE_CERTIFICATE'],
+  CIN: ['CIN_REQUEST', 'CIN_RENEWAL'],
+  AP: ['BUILDING_PERMIT'],
+  LS: ['LAND_STATUS'],
+  BCC: ['GOOD_CHARACTER_CERTIFICATE'],
+  VR: ['VEHICLE_REGISTRATION'],
+  DL: ['LOSS_DECLARATION'],
+  ASSOC: ['ASSOCIATION_DECLARATION'],
+  MANIF: ['EVENT_AUTHORIZATION'],
+  AGREMENT: ['ACCREDITATION'],
+  AUTRE: ['NATIONALITY_CERTIFICATE', 'COMMERCIAL_LICENSE', 'SIGNATURE_LEGALIZATION', 'SPECIAL_REQUEST', 'ADMINISTRATIVE_AUTHORIZATION'],
+  RECLAMATION: ['COMPLAINT'],
 };
 
 const requestLabels: Record<RequestType, string> = {
@@ -36,7 +37,7 @@ const requestLabels: Record<RequestType, string> = {
   VEHICLE_REGISTRATION: 'Immatriculation véhicule',
   LOSS_DECLARATION: 'Déclaration de perte',
   SIGNATURE_LEGALIZATION: 'Légalisation de signature',
-  COMPLAINT: 'Réclamation citoyenne',
+  COMPLAINT: 'Signalement ou réclamation',
   SPECIAL_REQUEST: 'Demande particulière',
   ASSOCIATION_DECLARATION: 'Déclaration d’association / ONG',
   EVENT_AUTHORIZATION: 'Autorisation de manifestation / foire / quête',
@@ -45,7 +46,7 @@ const requestLabels: Record<RequestType, string> = {
 };
 
 function isRequestType(value: string | null): value is RequestType {
-  return value !== null && value !== 'COMPLAINT' && Object.prototype.hasOwnProperty.call(requestLabels, value);
+  return value !== null && Object.prototype.hasOwnProperty.call(requestLabels, value);
 }
 
 type AttachmentRequirement = RequestAttachmentRequirement;
@@ -90,17 +91,24 @@ function renderValue(value: unknown) {
 export function RequestPage() {
   const { t, language } = usePreferences();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedType = searchParams.get('type');
   const [requestType, setRequestType] = useState<RequestType>(() => isRequestType(requestedType) ? requestedType : 'BIRTH_CERTIFICATE');
+  useEffect(() => {
+    if (requestType === 'COMPLAINT') navigate('/front/reclamations', { replace: true });
+  }, [navigate, requestType]);
+  const [selectedServiceId, setSelectedServiceId] = useState('');
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const serviceInitializationDone = useRef(false);
   const { data: services = [], isLoading } = useQuery({
     queryKey: ['prefecture-services'],
     queryFn: prefectureService.listServices,
   });
 
   const { data: dynamicRequirements, isLoading: loadingRequirements, isError: requirementsError } = useQuery<RequestRequirements>({
-    queryKey: ['request-requirements', requestType],
-    queryFn: () => prefectureService.requirements(requestType),
+    queryKey: ['request-requirements', requestType, formData.motif],
+    queryFn: () => prefectureService.requirements(requestType, formData.motif),
   });
   const { data: fees = {}, isLoading: loadingFees, isError: feesError } = useQuery({
     queryKey: ['prefecture-fees'],
@@ -123,26 +131,27 @@ export function RequestPage() {
   const [editAttachmentFile, setEditAttachmentFile] = useState<File | null>(null);
   const [editError, setEditError] = useState('');
   const { data: editRequirements, isLoading: loadingEditRequirements } = useQuery<RequestRequirements>({
-    queryKey: ['request-requirements', editingRequest?.type],
-    queryFn: () => prefectureService.requirements(editingRequest!.type as RequestType),
+    queryKey: ['request-requirements', editingRequest?.type, editFormData.motif],
+    queryFn: () => prefectureService.requirements(editingRequest!.type as RequestType, editFormData.motif),
     enabled: Boolean(editingRequest),
   });
   const expandedRequest = requests.find((request) => request.id === expandedRequestId);
   const { data: displayRequirements } = useQuery<RequestRequirements>({
-    queryKey: ['request-requirements', expandedRequest?.type],
-    queryFn: () => prefectureService.requirements(expandedRequest!.type as RequestType),
+    queryKey: ['request-requirements', expandedRequest?.type, expandedRequest?.formData?.motif],
+    queryFn: () => prefectureService.requirements(expandedRequest!.type as RequestType, String(expandedRequest!.formData?.motif ?? '')),
     enabled: Boolean(expandedRequest),
   });
 
-  const [selectedServiceId, setSelectedServiceId] = useState('');
+  const selectedService = services.find((service) => service.id === selectedServiceId);
+  const availableRequestTypes = selectedService ? requestTypesByServiceCode[selectedService.code] ?? [] : [];
   useEffect(() => {
-    if (requestType !== 'COMPLAINT' || selectedServiceId) return;
-    const complaintService = services.find((service) => service.code === 'RECLAMATION');
-    if (complaintService) setSelectedServiceId(complaintService.id);
-  }, [requestType, selectedServiceId, services]);
+    if (serviceInitializationDone.current || services.length === 0) return;
+    serviceInitializationDone.current = true;
+    const matchingService = services.find((service) => requestTypesByServiceCode[service.code]?.includes(requestType));
+    if (matchingService) setSelectedServiceId(matchingService.id);
+  }, [requestType, services]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [formData, setFormData] = useState<Record<string, string>>({});
   const [selectedFiles, setSelectedFiles] = useState<Array<{ requirement: string; file: File }>>([]);
   const [submitError, setSubmitError] = useState('');
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -172,6 +181,9 @@ export function RequestPage() {
   formFields.forEach((field) => {
     const value = formData[field.name]?.trim() ?? '';
     if (field.required && !value) requestFormWarnings.push(`${t(field.label)} : ${t('Ce champ est obligatoire.')}`);
+    if (value && field.type === 'select' && !field.options?.includes(value)) {
+      requestFormWarnings.push(`${t(field.label)} : ${t('Sélection invalide.')}`);
+    }
     if (value && field.name.toLowerCase().includes('cin') && field.name !== 'cinNif' && !/^\d{12}$/.test(value)) {
       requestFormWarnings.push(`${t(field.label)} : ${t('La CIN doit contenir exactement 12 chiffres.')}`);
     }
@@ -290,10 +302,15 @@ export function RequestPage() {
 
   const beginEditingRequest = (request: (typeof requests)[number]) => {
     const values = request.formData && typeof request.formData === 'object' ? request.formData : {};
+    const formValues = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, renderValue(value) === '—' ? '' : renderValue(value)]));
+    if (request.type === 'CIN_RENEWAL' && typeof formValues.motif === 'string') {
+      const motif = formValues.motif.trim().toLocaleLowerCase('fr');
+      formValues.motif = motif === 'perte' ? 'Perte' : motif === 'usure' ? 'Usure' : '';
+    }
     setEditingRequest(request);
     setEditTitle(request.title ?? '');
     setEditDescription(request.description ?? '');
-    setEditFormData(Object.fromEntries(Object.entries(values).map(([key, value]) => [key, renderValue(value) === '—' ? '' : renderValue(value)])));
+    setEditFormData(formValues);
     setEditAttachmentFile(null);
     setEditAttachmentLabel('');
     setEditAttachmentId('');
@@ -337,6 +354,7 @@ export function RequestPage() {
     formFields.forEach((field) => {
       const value = formData[field.name]?.trim() ?? '';
       if (field.required && !value) errors[field.name] = 'Ce champ est obligatoire.';
+      if (value && field.type === 'select' && !field.options?.includes(value)) errors[field.name] = 'Sélection invalide.';
       if (value && field.name.toLowerCase().includes('cin') && field.name !== 'cinNif' && !/^\d{12}$/.test(value)) errors[field.name] = 'La CIN doit contenir exactement 12 chiffres.';
       if (field.name === 'datePerte' && value && value > todayDate) errors[field.name] = 'La date de perte ne peut pas être dans le futur.';
     });
@@ -373,10 +391,11 @@ export function RequestPage() {
               const nextServiceId = e.target.value;
               const service = services.find((item) => item.id === nextServiceId);
               setSelectedServiceId(nextServiceId);
-              if (service && requestTypeByServiceCode[service.code]) handleTypeChange(requestTypeByServiceCode[service.code]);
+              const nextTypes = service ? requestTypesByServiceCode[service.code] ?? [] : [];
+              if (nextTypes.length > 0) handleTypeChange(nextTypes[0]);
             }}>
               <option value="">{t('Choisir un service')}</option>
-              {services.filter((service) => service.code !== 'RECLAMATION').map((service) => (
+              {services.map((service) => (
                 <option key={service.id} value={service.id}>{language === 'mg' ? service.nameMg : service.nameFr}</option>
               ))}
             </select>
@@ -384,11 +403,19 @@ export function RequestPage() {
 
           <label className="request-field">
             {t('Type de démarche')}
-            <select value={requestType} onChange={(e) => handleTypeChange(e.target.value as RequestType)}>
-              {Object.entries(requestLabels).filter(([value]) => value !== 'COMPLAINT').map(([value, label]) => (
-                <option key={value} value={value}>{t(label)}</option>
-              ))}
+            <select value={availableRequestTypes.includes(requestType) ? requestType : ''} disabled={!selectedServiceId || availableRequestTypes.length === 0} onChange={(e) => {
+              const nextType = e.target.value as RequestType;
+              if (!availableRequestTypes.includes(nextType)) return;
+              if (nextType === 'COMPLAINT') {
+                navigate('/front/reclamations');
+                return;
+              }
+              handleTypeChange(nextType);
+            }}>
+              <option value="">{t('Choisir une démarche')}</option>
+              {availableRequestTypes.map((value) => <option key={value} value={value}>{t(requestLabels[value])}</option>)}
             </select>
+            {!selectedServiceId && <small>{t('Choisissez un service pour afficher les démarches correspondantes.')}</small>}
           </label></div></section>
 
           <section className="request-form-section"><h3>{t('Objet du dossier')}</h3><label className="request-field">
@@ -400,14 +427,43 @@ export function RequestPage() {
             {formFields.map((field) => (
               <label className={`request-field ${field.type === 'textarea' ? 'full-width' : ''}`} key={field.name}>
                 {t(field.label)}{field.required ? ' *' : ''}
-                {field.type === 'select' ? (
+                {requestType === 'CIN_RENEWAL' && field.name === 'motif' ? (
+                  <select
+                    required
+                    value={formData.motif ?? ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData((prev) => ({ ...prev, motif: value }));
+                      setFieldErrors((prev) => ({ ...prev, motif: '' }));
+                      setSelectedFiles((previous) => previous.filter(({ requirement }) => {
+                        if (value === 'Perte') return !requirement.startsWith('Ancienne CIN');
+                        if (value === 'Usure') return requirement !== 'Déclaration de perte (si applicable)';
+                        return !requirement.startsWith('Ancienne CIN') && requirement !== 'Déclaration de perte (si applicable)';
+                      }));
+                    }}
+                  >
+                    <option value="">{t('Choisir un motif')}</option>
+                    {(field.options ?? []).map((option) => <option key={option} value={option}>{t(option)}</option>)}
+                  </select>
+                ) : field.type === 'select' ? (
                   <select
                     required={field.required}
                     value={formData[field.name] ?? ''}
-                    onChange={(e) => { setFormData((prev) => ({ ...prev, [field.name]: e.target.value })); setFieldErrors((prev) => ({ ...prev, [field.name]: '' })); }}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData((prev) => ({ ...prev, [field.name]: value }));
+                      setFieldErrors((prev) => ({ ...prev, [field.name]: '' }));
+                      if (requestType === 'CIN_RENEWAL' && field.name === 'motif') {
+                        setSelectedFiles((previous) => previous.filter(({ requirement }) => {
+                          if (value === 'Perte') return !requirement.startsWith('Ancienne CIN');
+                          if (value === 'Usure') return requirement !== 'Déclaration de perte (si applicable)';
+                          return !requirement.startsWith('Ancienne CIN') && requirement !== 'Déclaration de perte (si applicable)';
+                        }));
+                      }
+                    }}
                   >
-                    <option value="">{t('Choisir une unité')}</option>
-                    {(field.options ?? []).map((option) => <option key={option} value={option}>{option}</option>)}
+                    <option value="">{t(field.name === 'motif' ? 'Choisir un motif' : 'Choisir une unité')}</option>
+                    {(field.options ?? []).map((option) => <option key={option} value={option}>{t(option)}</option>)}
                   </select>
                 ) : field.type === 'textarea' ? (
                   <textarea
@@ -501,7 +557,14 @@ export function RequestPage() {
                 {(editRequirements?.fields ?? []).map((field) => (
                   <label className={`request-field ${field.type === 'textarea' ? 'full-width' : ''}`} key={field.name}>
                     {t(field.label)}{field.required ? ' *' : ''}
-                    {field.type === 'select' ? <select required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))}><option value="">{t('Choisir une unité')}</option>{(field.options ?? []).map((option) => <option key={option} value={option}>{option}</option>)}</select> : field.type === 'textarea' ? <textarea rows={3} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} /> : <input type={field.type} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} />}
+                    {field.type === 'select' ? <select required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => {
+                      const value = event.target.value;
+                      setEditFormData((previous) => ({ ...previous, [field.name]: value }));
+                      if (editingRequest.type === 'CIN_RENEWAL' && field.name === 'motif') {
+                        setEditAttachmentLabel('');
+                        setEditAttachmentFile(null);
+                      }
+                    }}><option value="">{t(field.name === 'motif' ? 'Choisir un motif' : 'Choisir une unité')}</option>{(field.options ?? []).map((option) => <option key={option} value={option}>{t(option)}</option>)}</select> : field.type === 'textarea' ? <textarea rows={3} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} /> : <input type={field.type} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} />}
                   </label>
                 ))}
               </div></section>

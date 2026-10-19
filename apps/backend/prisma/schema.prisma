@@ -61,6 +61,36 @@ enum CitizenComplaintStatus {
   REJECTED
 }
 
+enum FirearmRequestType {
+  HOLDING_PERMIT
+  CARRY_PERMIT
+  REGISTER_FIREARM
+  RENEW_PERMIT
+  DEREGISTER_FIREARM
+  TRANSFER_FIREARM
+}
+
+enum FirearmRequestStatus {
+  PENDING
+  IN_REVIEW
+  NEEDS_INFO
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum FirearmPermitType {
+  HOLDING
+  CARRY
+}
+
+enum FirearmPermitStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+  REPLACED
+}
+
 enum RequestStatus {
   DRAFT
   SUBMITTED
@@ -189,6 +219,11 @@ model User {
   reactivationRequests AccountReactivationRequest[]
   reviewedReactivations AccountReactivationRequest[] @relation("ReactivationReviewer")
   complaints           CitizenComplaint[]
+  firearms             Firearm[]                   @relation("FirearmOwner")
+  firearmRequests      FirearmRequest[]            @relation("FirearmRequestOwner")
+  firearmPermits       FirearmPermit[]             @relation("FirearmPermitOwner")
+  decidedFirearmRequests FirearmRequest[]          @relation("FirearmRequestDecider")
+  firearmHistory       FirearmControlHistory[]     @relation("FirearmHistoryActor")
   passwordResetOtps    PasswordResetOtp[]
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
@@ -367,6 +402,105 @@ model Payment {
   @@index([requestId])
   @@index([userId, status])
 }
+
+model Firearm {
+  id             String   @id @default(uuid())
+  ownerId        String
+  weaponType     String
+  brand          String
+  model          String
+  serialNumber   String   @unique
+  caliber        String?
+  acquiredAt     DateTime @db.Date
+  origin         String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  owner          User     @relation("FirearmOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  requests       FirearmRequest[]
+  permits        FirearmPermit[]
+  history        FirearmControlHistory[]
+
+  @@index([ownerId, isActive])
+  @@index([serialNumber])
+}
+
+model FirearmRequest {
+  id                  String               @id @default(uuid())
+  userId              String
+  firearmId           String?
+  type                FirearmRequestType
+  status              FirearmRequestStatus @default(PENDING)
+  data                Json                 @default("{}")
+  decisionComment     String?
+  decidedById         String?
+  decidedAt           DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  user                User                 @relation("FirearmRequestOwner", fields: [userId], references: [id], onDelete: Cascade)
+  firearm             Firearm?             @relation(fields: [firearmId], references: [id], onDelete: Restrict)
+  decidedBy           User?                @relation("FirearmRequestDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  attachments         FirearmRequestAttachment[]
+  history             FirearmControlHistory[]
+  issuedPermit        FirearmPermit?
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([firearmId])
+}
+
+model FirearmRequestAttachment {
+  id           String        @id @default(uuid())
+  requestId    String
+  label        String
+  originalName String
+  storagePath  String
+  mimeType     String?
+  size         Int?
+  createdAt    DateTime      @default(now())
+  request      FirearmRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+}
+
+model FirearmPermit {
+  id             String             @id @default(uuid())
+  userId         String
+  firearmId      String?
+  requestId      String             @unique
+  type           FirearmPermitType
+  status         FirearmPermitStatus @default(ACTIVE)
+  issuedAt       DateTime           @default(now())
+  expiresAt      DateTime
+  reminderSentAt DateTime?
+  renewedFromId  String?
+  user           User               @relation("FirearmPermitOwner", fields: [userId], references: [id], onDelete: Cascade)
+  firearm        Firearm?           @relation(fields: [firearmId], references: [id], onDelete: SetNull)
+  request        FirearmRequest     @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  renewedFrom    FirearmPermit?     @relation("PermitRenewals", fields: [renewedFromId], references: [id], onDelete: SetNull)
+  renewals       FirearmPermit[]    @relation("PermitRenewals")
+
+  @@index([userId, status, expiresAt])
+  @@index([firearmId])
+}
+
+model FirearmControlHistory {
+  id          String         @id @default(uuid())
+  firearmId   String?
+  requestId   String?
+  actorId     String?
+  action      String
+  details     Json           @default("{}")
+  createdAt   DateTime       @default(now())
+  firearm     Firearm?       @relation(fields: [firearmId], references: [id], onDelete: SetNull)
+  request     FirearmRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  actor       User?          @relation("FirearmHistoryActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([firearmId, createdAt])
+  @@index([requestId, createdAt])
+  @@index([actorId, createdAt])
+}
+
 model Appointment {
   id         String            @id @default(uuid())
   ticketReference String?

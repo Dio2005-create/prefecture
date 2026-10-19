@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, Bell, Bot, CalendarDays, FileText, LayoutDashboard, Menu, Search, ShieldCheck, X, UserRound, BriefcaseBusiness, CheckSquare, LogOut, Settings, KeyRound, Languages, Moon, Sun } from 'lucide-react';
@@ -13,6 +13,7 @@ type AppLayoutVariant = 'frontoffice' | 'backoffice';
 const citizenNavigation = [
   { to: '/front/accueil', label: 'Accueil citoyen', labelMg: 'Fandraisana', icon: LayoutDashboard },
   { to: '/front/demandes', label: 'Mes démarches', labelMg: 'Ny fangatahako', icon: FileText },
+  { to: '/front/armements', label: 'Contrôle des armements', labelMg: 'Fanaraha-maso fitaovam-piadiana', icon: ShieldCheck },
   { to: '/front/documents', label: 'Mes documents', labelMg: 'Ny taratasiko', icon: FileText },
   { to: '/front/informations', label: 'Textes officiels', labelMg: 'Lalàna ofisialy', icon: FileText },
   { to: '/front/rendez-vous', label: 'Rendez-vous', labelMg: 'Fotoana', icon: CalendarDays },
@@ -24,6 +25,7 @@ const agentNavigation = [
   { to: '/back/accueil', label: 'Tableau de bord', labelMg: 'Tabilao', icon: LayoutDashboard },
   { to: '/back/workflow', label: 'File des dossiers', labelMg: 'Filaharan’ny dosie', icon: CheckSquare },
   { to: '/back/reclamations', label: 'Réclamations citoyennes', labelMg: 'Fitarainana', icon: ShieldCheck },
+  { to: '/back/armements', label: 'Contrôle des armements', labelMg: 'Fanaraha-maso fitaovam-piadiana', icon: ShieldCheck },
   { to: '/back/notifications', label: 'Notifications', labelMg: 'Fampandrenesana', icon: Bell },
   { to: '/back/modeles', label: 'Modèles de documents', labelMg: 'Modelin-taratasy', icon: FileText },
   { to: '/back/cachets', label: 'Cachets & signatures', labelMg: 'Tombokase sy sonia', icon: ShieldCheck },
@@ -175,16 +177,19 @@ export function AppLayout({ children, variant }: { children: ReactNode; variant:
   const sidebar = <aside className={open ? 'sidebar is-open' : 'sidebar'}>
     <div className="brand"><span className="brand-mark"><Archive size={20} /></span><span>ARCHIVIA<small>{t('fonds préfectoral')}</small></span><button className="icon-button close-nav" onClick={() => setOpen(false)} aria-label={t('Fermer')}><X size={18} /></button></div>
     {title && <p className="nav-caption">{title}</p>}
-    <nav>{navigation.map(({ to, label, icon: Icon }) => <NavLink key={to} to={to} end={to === navigation[0].to} onClick={() => { setOpen(false); setProfileMenuOpen(false); }}><Icon size={17} />{t(label)}</NavLink>)}</nav>
+    <nav>{navigation.map(({ to, label, icon: Icon }) => <Fragment key={to}>
+      <NavLink to={to} end={to === navigation[0].to} onClick={() => { setOpen(false); setProfileMenuOpen(false); }}><Icon size={17} />{t(label)}</NavLink>
+      {variant === 'frontoffice' && to === '/front/assistant' && <button ref={profileTriggerRef} className="icon-button nav-menu-button" type="button" aria-expanded={profileMenuOpen} aria-label={t(profileMenuOpen ? 'Fermer le menu' : 'Ouvrir le menu')} onClick={() => setProfileMenuOpen((value) => !value)}><Menu size={18} /></button>}
+    </Fragment>)}
+    </nav>
     <div className="sidebar-foot"><ShieldCheck size={16} /><span>{t('Environnement local')}<small>{t('Traitement confidentiel')}</small></span></div>
   </aside>;
   const profilePath = variant === 'frontoffice' ? '/front/profil' : '/back/profil';
   const passwordPath = variant === 'frontoffice' ? '/front/parametres' : '/back/mot-de-passe';
-  const topbar = <header className="topbar"><button className="icon-button menu-button" onClick={() => setOpen(true)} aria-label={t('Ouvrir le menu')}><Menu size={20} /></button><NavigationPreferences showNotifications={variant === 'frontoffice'} showAdminNotifications={variant === 'backoffice'} /><div className="profile"><span className="avatar">{variant === 'frontoffice' ? <UserRound size={16} /> : <BriefcaseBusiness size={16} />}</span><span className="profile-identity"><strong>{profileName}</strong><span className="online-indicator" role="img" aria-label={t('En ligne')} title={t('En ligne')} /></span><button ref={profileTriggerRef} className="icon-button profile-menu-trigger" type="button" aria-expanded={profileMenuOpen} aria-label={t('Ouvrir le menu du profil')} onClick={() => setProfileMenuOpen((value) => !value)}><Menu size={18} /></button></div></header>;
-
-  return <div className={variant === 'frontoffice' ? 'app-shell frontoffice-shell' : 'app-shell backoffice-shell'}>
+  const topbar = <header className="topbar">{variant === 'backoffice' && <button className="icon-button menu-button" onClick={() => setOpen(true)} aria-label={t('Ouvrir le menu')}><Menu size={20} /></button>}<NavigationPreferences showNotifications={variant === 'frontoffice'} showAdminNotifications={variant === 'backoffice'} />  <div className="profile"><span className="avatar">{variant === 'frontoffice' ? <UserRound size={16} /> : <BriefcaseBusiness size={16} />}</span><span className="profile-identity"><strong>{profileName}</strong><span className="online-indicator" role="img" aria-label={t('En ligne')} title={t('En ligne')} /></span>{variant === 'backoffice' && <button ref={profileTriggerRef} className="icon-button profile-menu-trigger" type="button" aria-expanded={profileMenuOpen} aria-label={t('Ouvrir le menu du profil')} onClick={() => setProfileMenuOpen((value) => !value)}><UserRound size={17} /></button>}</div></header>;
+  return <div className={`${variant === 'frontoffice' ? 'app-shell frontoffice-shell' : 'app-shell backoffice-shell'}${variant === 'frontoffice' && open ? ' navigation-open' : ''}`}>
     {variant === 'frontoffice' ? <div className="frontoffice-sticky-header">{sidebar}{topbar}</div> : sidebar}
-    {open && <button className="scrim" onClick={() => setOpen(false)} aria-label={t('Fermer le menu')} />}
+    {open && variant === 'backoffice' && <button className="scrim" onClick={() => setOpen(false)} aria-label={t('Fermer le menu')} />}
     <section className="workspace">{variant === 'backoffice' && topbar}<main className="content">{children}</main></section>
     {profileMenuOpen && createPortal(<div ref={profileMenuRef} className="profile-menu profile-menu-portal" style={profileMenuPosition}>
       <NavLink to={profilePath} onClick={() => setProfileMenuOpen(false)}><UserRound size={15} /> {t('Mon profil')}</NavLink>
