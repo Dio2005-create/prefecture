@@ -16,6 +16,7 @@ export type AuthUser = {
   locale?: string;
   role: 'CITIZEN' | 'ADMIN' | 'SUPERADMIN';
   roles: string[];
+  mustChangePassword?: boolean;
 };
 
 type AuthContextValue = {

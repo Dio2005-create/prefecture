@@ -49,4 +49,18 @@ export class UsersController {
     }
     return this.usersService.decideReactivation(id, req.user?.id ?? '', body.decision);
   }
+
+  @Get('password-reset-requests')
+  passwordResetRequests() {
+    return this.usersService.listPasswordResetRequests();
+  }
+
+  @Post('password-reset-requests/:id/temporary-password')
+  issueTemporaryPassword(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: { user?: { id: string } },
+    @Body() body: { identityVerified?: boolean },
+  ) {
+    return this.usersService.issueTemporaryPassword(id, req.user?.id ?? '', body.identityVerified === true);
+  }
 }

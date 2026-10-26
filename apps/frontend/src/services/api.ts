@@ -24,9 +24,9 @@ export const authService = {
   login: async (identifier: string, password: string) => (await api.post<{ token: string; user?: unknown }>('/auth/login', { identifier, password })).data,
   requestReactivation: async (payload: { identifier: string; password: string; reason?: string }) =>
     (await api.post<{ success: boolean; message: string }>('/auth/request-reactivation', payload)).data,
-  requestPasswordReset: async (email: string) =>
-    (await api.post<{ success: boolean; message: string }>('/auth/password-reset/request', { email })).data,
-  resetPassword: async (payload: { email: string; code: string; password: string }) =>
+  requestPasswordReset: async (identifier: string, channel: 'EMAIL' | 'SMS' | 'CIN') =>
+    (await api.post<{ success: boolean; requiresOtp: boolean; channel?: 'EMAIL' | 'SMS' | 'CIN'; message: string }>('/auth/password-reset/request', { identifier, channel })).data,
+  resetPassword: async (payload: { identifier: string; code: string; password: string }) =>
     (await api.post<{ success: boolean; message: string }>('/auth/password-reset/confirm', payload)).data,
   validate: async (token: string) => (await api.post('/auth/validate', {}, { headers: { Authorization: `Bearer ${token}` } })).data,
   logout: async (token: string | null) => { if (token) await api.post('/auth/logout', {}, { headers: { Authorization: `Bearer ${token}` } }); },
@@ -184,6 +184,18 @@ export const userService = {
   reactivationRequests: async () => (await api.get<Array<{ id: string; reason: string | null; status: string; createdAt: string; user: { id: string; nom: string | null; email: string | null; phone: string | null; status: string } }>>('/users/reactivations')).data,
   decideReactivation: async (id: string, decision: 'APPROVED' | 'REJECTED') =>
     (await api.post(`/users/reactivations/${id}/decision`, { decision })).data,
+  passwordResetRequests: async () => (await api.get<Array<{
+    id: string;
+    status: string;
+    createdAt: string;
+    user: { id: string; nom: string | null; cin: string | null; email: string | null; phone: string | null };
+  }>>('/users/password-reset-requests')).data,
+  issueTemporaryPassword: async (id: string, identityVerified: boolean) => (await api.post<{
+    requestId: string;
+    temporaryPassword: string;
+    expiresAt: string;
+    message: string;
+  }>(`/users/password-reset-requests/${id}/temporary-password`, { identityVerified })).data,
 };
 
 export const adminService = {

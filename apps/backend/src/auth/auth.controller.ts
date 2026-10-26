@@ -30,13 +30,13 @@ export class AuthController {
   }
 
   @Post('password-reset/request')
-  requestPasswordReset(@Body() body: { email?: string }) {
-    return this.auth.requestPasswordReset(body.email ?? '');
+  requestPasswordReset(@Body() body: { identifier?: string; email?: string; channel?: 'EMAIL' | 'SMS' | 'CIN' }) {
+    return this.auth.requestPasswordReset(body.identifier ?? body.email ?? '', body.channel ?? 'EMAIL');
   }
 
   @Post('password-reset/confirm')
-  resetPassword(@Body() body: { email?: string; code?: string; password?: string }) {
-    return this.auth.resetPassword(body.email ?? '', body.code ?? '', body.password ?? '');
+  resetPassword(@Body() body: { identifier?: string; email?: string; code?: string; password?: string }) {
+    return this.auth.resetPassword(body.identifier ?? body.email ?? '', body.code ?? '', body.password ?? '');
   }
 
   @Post('logout')

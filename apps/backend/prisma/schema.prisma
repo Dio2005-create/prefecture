@@ -48,6 +48,12 @@ enum UserStatus {
   BLOCKED
 }
 
+enum PasswordResetRequestStatus {
+  PASSWORD_RESET_REQUESTED
+  APPROVED
+  REJECTED
+}
+
 enum ReactivationStatus {
   PENDING
   APPROVED
@@ -225,6 +231,11 @@ model User {
   decidedFirearmRequests FirearmRequest[]          @relation("FirearmRequestDecider")
   firearmHistory       FirearmControlHistory[]     @relation("FirearmHistoryActor")
   passwordResetOtps    PasswordResetOtp[]
+  passwordResetRequests PasswordResetRequest[] @relation("PasswordResetRequestUser")
+  reviewedPasswordResetRequests PasswordResetRequest[] @relation("PasswordResetRequestReviewer")
+  mustChangePassword   Boolean               @default(false)
+  temporaryPasswordExpiresAt DateTime?
+  temporaryPasswordUsedAt DateTime?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
 }
@@ -352,6 +363,21 @@ model PasswordResetOtp {
 
   @@index([userId, createdAt])
   @@index([expiresAt])
+}
+
+model PasswordResetRequest {
+  id          String                     @id @default(uuid())
+  userId      String
+  status      PasswordResetRequestStatus @default(PASSWORD_RESET_REQUESTED)
+  reviewedById String?
+  reviewedAt  DateTime?
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+  user        User                       @relation("PasswordResetRequestUser", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy  User?                      @relation("PasswordResetRequestReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([userId, status])
 }
 
 model CitizenComplaint {

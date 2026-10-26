@@ -26,7 +26,6 @@ const agentNavigation = [
   { to: '/back/workflow', label: 'File des dossiers', labelMg: 'Filaharan’ny dosie', icon: CheckSquare },
   { to: '/back/reclamations', label: 'Réclamations citoyennes', labelMg: 'Fitarainana', icon: ShieldCheck },
   { to: '/back/armements', label: 'Contrôle des armements', labelMg: 'Fanaraha-maso fitaovam-piadiana', icon: ShieldCheck },
-  { to: '/back/notifications', label: 'Notifications', labelMg: 'Fampandrenesana', icon: Bell },
   { to: '/back/modeles', label: 'Modèles de documents', labelMg: 'Modelin-taratasy', icon: FileText },
   { to: '/back/cachets', label: 'Cachets & signatures', labelMg: 'Tombokase sy sonia', icon: ShieldCheck },
   { to: '/back/documents', label: 'Archives', labelMg: 'Tahiry', icon: FileText },

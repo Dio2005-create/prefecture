@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
-import { randomBytes, scrypt as deriveKey } from 'node:crypto';
+import { randomBytes, randomInt, scrypt as deriveKey } from 'node:crypto';
 import { promisify } from 'node:util';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
@@ -196,5 +196,84 @@ export class UsersService {
     }
     if (decision === 'APPROVED') this.auth.revokeUserSessions(request.userId);
     return { success: true, status: nextStatus, emailSent: Boolean(request.user.email) };
+  }
+
+  listPasswordResetRequests() {
+    return this.prisma.passwordResetRequest.findMany({
+      where: { status: 'PASSWORD_RESET_REQUESTED' },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        user: { select: { id: true, nom: true, cin: true, email: true, phone: true } },
+      },
+    });
+  }
+
+  async issueTemporaryPassword(requestId: string, reviewerId: string, identityVerified: boolean) {
+    if (!identityVerified) throw new BadRequestException('Vérifiez la CIN originale au guichet avant de continuer.');
+    const request = await this.prisma.passwordResetRequest.findUnique({
+      where: { id: requestId },
+      include: { user: true },
+    });
+    if (!request || request.status !== 'PASSWORD_RESET_REQUESTED') {
+      throw new NotFoundException('Demande de réinitialisation introuvable ou déjà traitée.');
+    }
+    if (request.user.role !== 'CITIZEN' || !request.user.cin) {
+      throw new BadRequestException('Cette demande ne correspond pas à un compte citoyen avec une CIN vérifiable.');
+    }
+
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const temporaryCharacters = [
+      alphabet[randomInt(0, 26)],
+      alphabet[randomInt(26, alphabet.length)],
+      ...Array.from({ length: 6 }, () => alphabet[randomInt(0, alphabet.length)]),
+    ];
+    for (let index = temporaryCharacters.length - 1; index > 0; index -= 1) {
+      const swapIndex = randomInt(0, index + 1);
+      [temporaryCharacters[index], temporaryCharacters[swapIndex]] = [temporaryCharacters[swapIndex], temporaryCharacters[index]];
+    }
+    const temporaryPassword = temporaryCharacters.join('');
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const reviewedAt = new Date();
+    const passwordHash = await this.hashPassword(temporaryPassword);
+
+    await this.prisma.$transaction(async (transaction) => {
+      const updatedRequest = await transaction.passwordResetRequest.updateMany({
+        where: { id: request.id, status: 'PASSWORD_RESET_REQUESTED' },
+        data: { status: 'APPROVED', reviewedById: reviewerId, reviewedAt },
+      });
+      if (updatedRequest.count !== 1) {
+        throw new BadRequestException('Cette demande vient d’être traitée. Actualisez la liste.');
+      }
+      await transaction.user.update({
+        where: { id: request.userId },
+        data: {
+          passwordHash,
+          mustChangePassword: true,
+          temporaryPasswordExpiresAt: expiresAt,
+          temporaryPasswordUsedAt: null,
+        },
+      });
+      await transaction.journalAudit.create({
+        data: {
+          utilisateurId: reviewerId,
+          action: 'CITIZEN_TEMPORARY_PASSWORD_ISSUED',
+          details: {
+            userId: request.userId,
+            passwordResetRequestId: request.id,
+            identityVerified: true,
+            reviewedAt: reviewedAt.toISOString(),
+            expiresAt: expiresAt.toISOString(),
+          },
+        },
+      });
+    });
+    this.auth.revokeUserSessions(request.userId);
+
+    return {
+      requestId: request.id,
+      temporaryPassword,
+      expiresAt,
+      message: 'Code temporaire généré. Communiquez-le au citoyen après vérification de son identité. Il est valable 24 heures et devra être remplacé à la première connexion.',
+    };
   }
 }

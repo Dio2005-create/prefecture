@@ -10,7 +10,7 @@ const scrypt = promisify(deriveKey);
 
 @Injectable()
 export class AuthService {
-  private readonly sessions = new Map<string, { expiresAt: number; userId: string }>();
+  private readonly sessions = new Map<string, { expiresAt: number; userId: string; temporaryPasswordLogin: boolean }>();
   private readonly logger = new Logger(AuthService.name);
 
   constructor(private readonly prisma: PrismaService, private readonly mailer: MailerService) {}
@@ -32,7 +32,7 @@ export class AuthService {
     return expected.length === actual.length && timingSafeEqual(actual, expected);
   }
 
-  private toUserPayload(user: { id: string; email: string | null; nom: string | null; phone: string | null; cin: string | null; role: string; locale: string; status: string; isTwoFactorEnabled: boolean; lastLoginAt: Date | null; roles?: Array<{ role: { name: RoleName } }> }) {
+  private toUserPayload(user: { id: string; email: string | null; nom: string | null; phone: string | null; cin: string | null; role: string; locale: string; status: string; isTwoFactorEnabled: boolean; lastLoginAt: Date | null; mustChangePassword: boolean; roles?: Array<{ role: { name: RoleName } }> }) {
     return {
       id: user.id,
       email: user.email,
@@ -45,6 +45,7 @@ export class AuthService {
       status: user.status,
       isTwoFactorEnabled: user.isTwoFactorEnabled,
       lastLoginAt: user.lastLoginAt,
+      mustChangePassword: user.mustChangePassword,
     };
   }
 
@@ -112,7 +113,7 @@ export class AuthService {
     });
 
     const token = randomBytes(32).toString('hex');
-    this.sessions.set(token, { expiresAt: Date.now() + SESSION_DURATION, userId: user.id });
+    this.sessions.set(token, { expiresAt: Date.now() + SESSION_DURATION, userId: user.id, temporaryPasswordLogin: false });
 
     const userWithRoles = await this.prisma.user.findUniqueOrThrow({
       where: { id: user.id },
@@ -144,8 +145,27 @@ export class AuthService {
     if (user.status === 'REACTIVATION_REQUESTED') throw new UnauthorizedException('Votre demande de réactivation est en cours de traitement.');
     if (user.status !== 'ACTIVE') throw new UnauthorizedException('Compte indisponible');
 
+    if (user.mustChangePassword) {
+      if (!user.temporaryPasswordExpiresAt || user.temporaryPasswordExpiresAt <= new Date()) {
+        throw new UnauthorizedException('Le mot de passe temporaire a expiré. Présentez-vous au guichet avec votre CIN.');
+      }
+      if (user.temporaryPasswordUsedAt) {
+        throw new UnauthorizedException('Ce mot de passe temporaire a déjà été utilisé. Reprenez la procédure au guichet.');
+      }
+      const claimed = await this.prisma.user.updateMany({
+        where: {
+          id: user.id,
+          mustChangePassword: true,
+          temporaryPasswordUsedAt: null,
+          temporaryPasswordExpiresAt: { gt: new Date() },
+        },
+        data: { temporaryPasswordUsedAt: new Date() },
+      });
+      if (claimed.count !== 1) throw new UnauthorizedException('Ce mot de passe temporaire a déjà été utilisé ou a expiré.');
+    }
+
     const token = randomBytes(32).toString('hex');
-    this.sessions.set(token, { expiresAt: Date.now() + SESSION_DURATION, userId: user.id });
+    this.sessions.set(token, { expiresAt: Date.now() + SESSION_DURATION, userId: user.id, temporaryPasswordLogin: user.mustChangePassword });
 
     const updatedUser = await this.prisma.user.update({
       where: { id: user.id },
@@ -178,7 +198,7 @@ export class AuthService {
       throw new UnauthorizedException('Session expirée');
     }
 
-    this.sessions.set(token, { expiresAt: Date.now() + SESSION_DURATION, userId: session.userId });
+    this.sessions.set(token, { ...session, expiresAt: Date.now() + SESSION_DURATION });
 
     const user = await this.prisma.user.findUnique({
       where: { id: session.userId },
@@ -188,6 +208,11 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('Utilisateur introuvable');
     if (user.status !== 'ACTIVE') {
       throw new UnauthorizedException('Compte indisponible');
+    }
+    if (session.temporaryPasswordLogin && user.mustChangePassword &&
+      (!user.temporaryPasswordExpiresAt || user.temporaryPasswordExpiresAt <= new Date())) {
+      this.sessions.delete(token);
+      throw new UnauthorizedException('Le mot de passe temporaire a expiré. Présentez-vous au guichet avec votre CIN.');
     }
 
     return { authenticated: true, user: this.toUserPayload(user) };
@@ -201,20 +226,44 @@ export class AuthService {
     }
     const cleanCurrentPassword = currentPassword.trim();
     const cleanNewPassword = newPassword.trim();
-    if (!cleanCurrentPassword || !cleanNewPassword) throw new UnauthorizedException('Les deux mots de passe sont requis');
+    if (!cleanNewPassword) throw new UnauthorizedException('Le nouveau mot de passe est requis');
     if (cleanNewPassword.length < 8) throw new UnauthorizedException('Le nouveau mot de passe doit contenir au moins 8 caractères');
     const user = await this.prisma.user.findUnique({ where: { id: session.userId } });
-    if (!user?.passwordHash || !(await this.verifyPassword(cleanCurrentPassword, user.passwordHash))) {
-      throw new UnauthorizedException('L’ancien mot de passe est incorrect');
+    if (!user?.passwordHash) throw new UnauthorizedException('Utilisateur introuvable');
+    if (session.temporaryPasswordLogin) {
+      if (!user.mustChangePassword || !user.temporaryPasswordExpiresAt || user.temporaryPasswordExpiresAt <= new Date()) {
+        throw new UnauthorizedException('Le mot de passe temporaire a expiré. Présentez-vous au guichet avec votre CIN.');
+      }
+    } else {
+      if (!cleanCurrentPassword || !(await this.verifyPassword(cleanCurrentPassword, user.passwordHash))) {
+        throw new UnauthorizedException('L’ancien mot de passe est incorrect');
+      }
     }
-    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: await this.hashPassword(cleanNewPassword) } });
-    this.sessions.delete(token);
+    const updated = await this.prisma.user.updateMany({
+      where: {
+        id: user.id,
+        ...(session.temporaryPasswordLogin ? {
+          mustChangePassword: true,
+          temporaryPasswordExpiresAt: { gt: new Date() },
+          temporaryPasswordUsedAt: { not: null },
+        } : {}),
+      },
+      data: {
+        passwordHash: await this.hashPassword(cleanNewPassword),
+        mustChangePassword: false,
+        temporaryPasswordExpiresAt: null,
+        temporaryPasswordUsedAt: null,
+      },
+    });
+    if (updated.count !== 1) throw new UnauthorizedException('Le mot de passe temporaire a expiré ou a déjà été remplacé.');
+    this.revokeUserSessions(user.id);
     return { success: true, message: 'Mot de passe modifié. Veuillez vous reconnecter.' };
   }
 
   async updateProfile(token: string, input: { nom?: string; email?: string; phone?: string; cin?: string }) {
     const session = this.sessions.get(token);
     if (!session || session.expiresAt < Date.now()) throw new UnauthorizedException('Session expirée');
+    if (session.temporaryPasswordLogin) throw new UnauthorizedException('Changez votre mot de passe avant de modifier votre profil.');
     const email = input.email?.trim().toLowerCase();
     const phone = input.phone?.trim() || null;
     const cin = input.cin?.trim() || null;
@@ -223,13 +272,14 @@ export class AuthService {
     const duplicate = await this.prisma.user.findFirst({ where: { OR: [{ email }, ...(phone ? [{ phone }] : []), ...(cin ? [{ cin }] : [])], NOT: { id: session.userId } } });
     if (duplicate) throw new UnauthorizedException('Ces informations sont déjà utilisées par un autre compte');
     const user = await this.prisma.user.update({ where: { id: session.userId }, data: { email, nom: input.nom?.trim() || null, phone, cin }, include: { roles: { include: { role: true } } } });
-    this.sessions.set(token, { expiresAt: Date.now() + SESSION_DURATION, userId: session.userId });
+    this.sessions.set(token, { ...session, expiresAt: Date.now() + SESSION_DURATION });
     return { success: true, user: this.toUserPayload(user) };
   }
 
   async updateLocale(token: string, locale: string) {
     const session = this.sessions.get(token);
     if (!session || session.expiresAt < Date.now()) throw new UnauthorizedException('Session expirée');
+    if (session.temporaryPasswordLogin) throw new UnauthorizedException('Changez votre mot de passe avant de modifier vos préférences.');
     if (locale !== 'fr' && locale !== 'mg') throw new BadRequestException('La langue doit être le français ou le malagasy.');
     const user = await this.prisma.user.update({
       where: { id: session.userId },
@@ -304,13 +354,82 @@ export class AuthService {
     return { success: true, message: 'Demande de réactivation transmise à l’administration.' };
   }
 
-  async requestPasswordReset(emailInput: string) {
-    const email = emailInput.trim().toLowerCase();
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new UnauthorizedException('Saisissez une adresse email valide.');
-    const user = await this.prisma.user.findFirst({
-      where: { email: { equals: email, mode: 'insensitive' } },
-    });
-    if (!user) throw new UnauthorizedException('Aucun compte n’est associé à cette adresse email.');
+  private async findPasswordResetUser(identifierInput: string) {
+    const identifier = identifierInput.trim();
+    if (!identifier) throw new UnauthorizedException('Saisissez votre email, votre numéro de téléphone ou votre CIN.');
+    if (identifier.includes('@')) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier)) throw new UnauthorizedException('Saisissez une adresse email valide.');
+      return this.prisma.user.findFirst({ where: { email: { equals: identifier.toLowerCase(), mode: 'insensitive' } } });
+    }
+    if (/^\d{12}$/.test(identifier)) {
+      return this.prisma.user.findFirst({ where: { cin: identifier } });
+    }
+    return this.prisma.user.findFirst({ where: { phone: { equals: identifier, mode: 'insensitive' } } });
+  }
+
+  async requestPasswordReset(identifierInput: string, channel: 'EMAIL' | 'SMS' | 'CIN') {
+    const identifier = identifierInput.trim();
+    if (!identifier) throw new UnauthorizedException('Saisissez votre identifiant.');
+    if (channel === 'SMS') {
+      throw new ServiceUnavailableException('Le service de réinitialisation par SMS n’est pas disponible pour le moment.');
+    }
+    if (channel === 'EMAIL' && !identifier.includes('@')) {
+      throw new UnauthorizedException('Saisissez une adresse email valide.');
+    }
+    if (channel === 'CIN' && !/^\d{12}$/.test(identifier)) {
+      throw new UnauthorizedException('La CIN doit contenir exactement 12 chiffres.');
+    }
+
+    const user = await this.findPasswordResetUser(identifier);
+    const isEmail = channel === 'EMAIL';
+    if (!user || (channel === 'CIN' && user.role !== 'CITIZEN')) {
+      throw new UnauthorizedException('Aucun compte n’est associé à ces informations.');
+    }
+
+    if (channel === 'CIN') {
+      if (!user.cin) throw new UnauthorizedException('Aucune CIN n’est associée à ce compte.');
+      const existing = await this.prisma.passwordResetRequest.findFirst({
+        where: { userId: user.id, status: 'PASSWORD_RESET_REQUESTED' },
+        select: { id: true },
+      });
+      if (!existing) {
+        await this.prisma.$transaction(async (transaction) => {
+          const request = await transaction.passwordResetRequest.create({ data: { userId: user.id } });
+          const administrators = await transaction.user.findMany({
+            where: {
+              OR: [
+                { role: 'ADMIN' },
+                { roles: { some: { role: { name: { in: ['ADMIN', 'SUPERADMIN'] } } } } },
+              ],
+            },
+            select: { id: true },
+          });
+          if (administrators.length > 0) {
+            await transaction.notification.createMany({
+              data: administrators.map(({ id }) => ({
+                userId: id,
+                channel: 'PUSH',
+                title: 'Demande de réinitialisation par CIN',
+                message: `Nouvelle demande de réinitialisation par CIN pour ${user.nom?.trim() || 'un citoyen'}. Vérification de la CIN originale requise au guichet.`,
+                metadata: { type: 'CITIZEN_PASSWORD_RESET_CIN_REQUESTED', userId: user.id, requestId: request.id },
+              })),
+            });
+          }
+        });
+      }
+      await this.prisma.passwordResetOtp.updateMany({
+        where: { userId: user.id, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+      return {
+        success: true,
+        requiresOtp: false,
+        channel: 'CIN',
+        message: 'Votre demande est enregistrée. Présentez-vous au guichet avec votre CIN originale pour vérifier votre identité et réinitialiser votre mot de passe.',
+      };
+    }
+    if (!isEmail || !user.email?.trim()) throw new UnauthorizedException('Aucune adresse email n’est associée à ce compte.');
+    const email = user.email.trim();
 
     const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
     const otp = await this.prisma.passwordResetOtp.create({
@@ -331,19 +450,19 @@ export class AuthService {
       this.logger.error('Failed to send password reset code', error instanceof Error ? error.stack : String(error));
       throw new ServiceUnavailableException('Le service d’envoi du code est momentanément inaccessible. Vérifiez votre connexion Internet puis réessayez.');
     }
-    return { success: true, message: 'Un code de vérification a été envoyé à votre adresse email.' };
+    return { success: true, requiresOtp: true, channel: 'EMAIL', message: 'Un code de vérification a été envoyé à votre adresse email.' };
   }
 
-  async resetPassword(emailInput: string, codeInput: string, passwordInput: string) {
-    const email = emailInput.trim().toLowerCase();
+  async resetPassword(identifierInput: string, codeInput: string, passwordInput: string) {
+    const identifier = identifierInput.trim();
     const code = codeInput.trim();
     const password = passwordInput.trim();
     if (!/^\d{6}$/.test(code)) throw new UnauthorizedException('Le code OTP doit contenir 6 chiffres.');
     if (password.length < 8) throw new UnauthorizedException('Le nouveau mot de passe doit contenir au moins 8 caractères.');
-    const user = await this.prisma.user.findFirst({
-      where: { email: { equals: email, mode: 'insensitive' } },
-    });
-    if (!user) throw new UnauthorizedException('Aucun compte n’est associé à cette adresse email.');
+    const user = await this.findPasswordResetUser(identifier);
+    if (!user || (!identifier.includes('@') && user.role !== 'CITIZEN') || !user.email) {
+      throw new UnauthorizedException('Aucun compte associé à ces informations.');
+    }
     const otp = await this.prisma.passwordResetOtp.findFirst({
       where: { userId: user.id, consumedAt: null },
       orderBy: { createdAt: 'desc' },
@@ -367,7 +486,15 @@ export class AuthService {
         data: { consumedAt: new Date() },
       });
       if (consumed.count !== 1) throw new UnauthorizedException('Le code OTP a expiré ou a déjà été utilisé. Demandez un nouveau code.');
-      await transaction.user.update({ where: { id: user.id }, data: { passwordHash } });
+      await transaction.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          mustChangePassword: false,
+          temporaryPasswordExpiresAt: null,
+          temporaryPasswordUsedAt: null,
+        },
+      });
     });
     this.revokeUserSessions(user.id);
     return { success: true, message: 'Mot de passe modifié. Vous pouvez vous connecter.' };

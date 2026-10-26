@@ -17,7 +17,6 @@
 .login-panel-inner { animation: login-card-enter 700ms cubic-bezier(.2,.75,.25,1) 170ms both; }
 .login-visual-inner { animation: login-visual-enter .8s cubic-bezier(.2,.75,.25,1) both; }
 .login-panel-inner { transform: translateY(0); transition: transform .35s ease, box-shadow .35s ease, border-color .35s ease; animation: login-panel-enter .7s cubic-bezier(.2,.75,.25,1) .08s both; }
-.login-panel-inner.is-registering { transform: translateY(-4px); border-color: rgba(60, 105, 112, .38); box-shadow: 0 24px 54px rgba(11, 23, 28, .13); }
 .login-logo { animation: login-logo-enter .9s cubic-bezier(.16,1,.3,1) .12s both; }
 .login-visual h2, .login-visual-copy, .login-features li { animation: login-visual-enter .6s ease both; }
 .login-visual h2 { animation-delay: .16s; }
@@ -40,7 +39,9 @@
 @keyframes login-chip-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes login-field-enter { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .login-visual-inner, .login-panel-inner, .login-logo, .login-visual h2, .login-visual-copy, .login-features li, .login-panel-inner form > label { animation: none !important; transition: none !important; } }
-.login-page { position: relative; overflow: hidden; }
+
+/* Preserve the original entrance animation and its decorative character. */
+.login-page { position: relative; overflow-x: clip; }
 .login-page > .login-panel .login-panel-inner { translate: 120vw 0; opacity: 0; animation: login-form-pull 1900ms cubic-bezier(.18,.74,.22,1) 180ms both; }
 .login-character { position: absolute; z-index: 4; top: 52%; left: 57.5%; width: 132px; height: 178px; opacity: 0; pointer-events: none; animation: login-character-arrive 2300ms cubic-bezier(.18,.74,.22,1) both; }
 .login-character svg { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -61,6 +62,222 @@
 @keyframes login-rope-pull { 0%, 23% { stroke-dashoffset: 50; } 58%, 76% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 50; } }
 @media (max-width: 860px) { .login-character { display: none; } }
 @media (prefers-reduced-motion: reduce) { .login-page > .login-panel .login-panel-inner { translate: none; opacity: 1; animation: none; } .login-character { display: none; animation: none; } }
+.login-page.is-registering .login-character { animation: none; opacity: 0; }
+@media (max-width: 860px) {
+  .login-page.is-registering .login-visual,
+  .login-page.is-registering .login-panel { translate: 0 0; }
+}
+
+/* Slide the existing welcome panel while the form card flips behind it. */
+.login-visual {
+  position: relative;
+  z-index: 2;
+  transition: translate 700ms cubic-bezier(.22,.72,.18,1);
+}
+.login-page.is-registering .login-visual { translate: 74% 0; }
+.login-panel {
+  position: relative;
+  z-index: 3;
+  background: transparent;
+  perspective: 1200px;
+  transition: translate 700ms cubic-bezier(.22,.72,.18,1);
+}
+.login-page.is-registering .login-panel { translate: -100% 0; }
+.login-panel-inner {
+  transform-style: preserve-3d;
+  rotate: y 0deg;
+  transition: rotate 700ms cubic-bezier(.22,.72,.18,1) 100ms, transform .35s ease, box-shadow .35s ease, border-color .35s ease;
+  will-change: rotate;
+}
+.login-panel-inner.is-registering { rotate: y 180deg; }
+.login-panel-content {
+  backface-visibility: visible;
+  transform-style: preserve-3d;
+  transition: transform 700ms cubic-bezier(.22,.72,.18,1) 100ms;
+}
+.login-panel-inner.is-registering .login-panel-content { transform: rotateY(180deg); }
+.login-panel-inner.is-registering {
+  padding: 20px;
+}
+.login-panel-inner.is-registering h1 { margin-top: 6px; }
+.login-panel-inner.is-registering .login-subtitle { margin-bottom: 14px; }
+.login-panel-inner.is-registering .login-flow-form { gap: 10px; }
+.login-panel-inner.is-registering .login-floating-field { margin-bottom: 8px; }
+.login-panel-inner.is-registering .login-floating-field input { min-height: 48px; }
+.login-panel-inner.is-registering .login-floating-field > span:first-child { top: 14px; }
+.login-panel-inner.is-registering .login-floating-field:focus-within > span:first-child,
+.login-panel-inner.is-registering .login-floating-field:has(input:not(:placeholder-shown)) > span:first-child { top: 5px; }
+.login-panel-inner.is-registering .login-panel-content > .login-eyebrow { margin-bottom: 4px; }
+.login-panel-inner.is-registering .login-panel-content > .login-subtitle { line-height: 1.45; }
+.login-panel-inner.is-registering .login-age-field legend { margin-bottom: 4px; }
+.login-page.is-registering .login-visual h2 { max-width: 100%; font-size: clamp(1.8rem, 4vw, 2.7rem); line-height: 1.12; text-wrap: balance; overflow-wrap: anywhere; }
+.login-visual .login-panel-message,
+.login-visual .login-visual-copy,
+.login-panel-inner .login-auth-switch { animation: login-panel-message-in 320ms ease both; }
+@keyframes login-panel-message-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* Floating labels and focus glow use existing form tokens and surfaces. */
+.login-panel-inner .login-floating-field {
+  position: relative;
+  display: block;
+  margin: 0 0 16px;
+  color: var(--ink-muted, #586d87);
+}
+.login-panel-inner .login-reset-method {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 16px;
+  color: var(--ink-muted, #586d87);
+  font-size: 12px;
+  font-weight: 700;
+}
+.login-panel-inner .login-reset-method select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, rgba(120,136,139,.35));
+  border-radius: 10px;
+  background: var(--surface, rgba(255,255,255,.86));
+  color: var(--ink, #233437);
+  font: inherit;
+}
+.login-panel-inner .login-reset-method select:focus-visible {
+  outline: 3px solid var(--focus, var(--primary, #347b76));
+  outline-offset: 3px;
+}
+.login-panel-inner .login-floating-field > span:first-child {
+  position: absolute;
+  z-index: 1;
+  top: 17px;
+  left: 14px;
+  max-width: calc(100% - 28px);
+  overflow: hidden;
+  color: inherit;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform-origin: left top;
+  transition: color .18s ease, transform .18s ease, top .18s ease;
+}
+.login-panel-inner .login-floating-field input,
+.login-panel-inner .login-floating-field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 54px;
+  padding: 22px 14px 9px;
+  border: 1px solid var(--line, rgba(120,136,139,.35));
+  border-radius: 10px;
+  background: var(--surface, rgba(255,255,255,.86));
+  color: var(--ink, #233437);
+  transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
+}
+.login-panel-inner .login-floating-field textarea { min-height: 88px; resize: vertical; }
+.login-panel-inner .login-floating-field:focus-within input,
+.login-panel-inner .login-floating-field:focus-within textarea {
+  border-color: var(--focus, var(--primary, #347b76));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus, var(--primary, #347b76)) 22%, transparent);
+  outline: 2px solid transparent;
+}
+.login-panel-inner .login-reset-method select:focus-visible {
+  border-color: var(--focus, var(--primary, #347b76));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus, var(--primary, #347b76)) 22%, transparent);
+}
+.login-panel-inner .login-floating-field:focus-within > span:first-child,
+.login-panel-inner .login-floating-field:has(input:not(:placeholder-shown)) > span:first-child,
+.login-panel-inner .login-floating-field:has(textarea:not(:placeholder-shown)) > span:first-child {
+  top: 6px;
+  color: var(--primary, #347b76);
+  transform: scale(.76);
+}
+.login-panel-inner .login-floating-field .password-field {
+  display: block;
+}
+.login-panel-inner .login-floating-field .password-field input { padding-right: 48px; }
+.login-panel-inner .login-floating-field .password-toggle {
+  position: absolute;
+  top: 9px;
+  right: 8px;
+  min-height: 36px;
+}
+.login-panel-inner :is(input, textarea, button):focus-visible {
+  outline: 3px solid var(--focus, var(--primary, #347b76));
+  outline-offset: 3px;
+}
+.login-panel-inner .button.primary,
+.login-panel-inner .auth-switch { transition: transform .2s ease, box-shadow .2s ease, background-color .2s ease; }
+.login-panel-inner .button.primary:hover,
+.login-panel-inner .auth-switch:hover { transform: translateY(-2px) scale(1.015); }
+.login-panel-inner .button.primary:active,
+.login-panel-inner .auth-switch:active { transform: scale(.975); }
+
+/* Add a subtle pointer tilt only on precision-pointer devices. */
+.login-panel-inner.is-registering { transform: translateY(-4px) rotateX(var(--login-tilt-x, 0deg)) rotateY(var(--login-tilt-y, 0deg)); }
+.login-panel-inner:not(.is-registering) { transform: translateY(0) rotateX(var(--login-tilt-x, 0deg)) rotateY(var(--login-tilt-y, 0deg)); }
+@media (hover: none), (pointer: coarse) {
+  .login-panel-inner,
+  .login-panel-inner.is-registering { transform: none; }
+}
+@media (max-width: 860px) {
+  .login-page { display: flex; flex-direction: column; }
+  .login-visual { min-height: 300px; padding: 38px 24px; }
+  .login-panel { justify-content: center; padding: 28px 18px; }
+  .login-panel-inner { width: min(100%, 430px); }
+  .login-page.is-registering .login-visual,
+  .login-page.is-registering .login-panel { translate: 0 0; }
+}
+@media (max-width: 860px) {
+  .login-page.is-registering .login-visual { min-height: 0; padding: 10px 18px 7px; }
+  .login-page.is-registering .login-logo { width: 48px; height: 48px; margin-bottom: 3px; }
+  .login-page.is-registering .login-visual .eyebrow { margin: 2px 0; font-size: 9px; }
+  .login-page.is-registering .login-visual h2 { max-width: 100%; margin: 4px 0 5px; font-size: clamp(1.35rem, 5vw, 1.8rem); line-height: 1.12; overflow-wrap: anywhere; }
+  .login-page.is-registering .login-visual-copy { font-size: 12px; line-height: 1.3; }
+  .login-page.is-registering .login-features { gap: 5px; margin-top: 7px; }
+  .login-page.is-registering .login-features li { padding: 5px 8px; font-size: 8px; }
+  .login-page.is-registering .login-panel { padding: 6px 14px 12px; }
+  .login-panel-inner.is-registering { padding: 12px; }
+  .login-panel-inner.is-registering h1 { margin: 2px 0 4px; font-size: 24px; }
+  .login-panel-inner.is-registering .login-eyebrow { margin: 0; font-size: 9px; }
+  .login-panel-inner.is-registering .login-subtitle { margin-bottom: 5px; font-size: 11px; line-height: 1.3; }
+  .login-panel-inner.is-registering .login-flow-form { gap: 4px; }
+  .login-panel-inner.is-registering .login-floating-field { margin-bottom: 2px; }
+  .login-panel-inner.is-registering .login-floating-field input { min-height: 38px; padding-top: 17px; padding-bottom: 5px; }
+  .login-panel-inner.is-registering .login-floating-field > span:first-child { top: 9px; }
+  .login-panel-inner.is-registering .login-floating-field:focus-within > span:first-child,
+  .login-panel-inner.is-registering .login-floating-field:has(input:not(:placeholder-shown)) > span:first-child { top: 3px; }
+  .login-panel-inner.is-registering .login-floating-field small { font-size: 9px; line-height: 1.2; }
+  .login-panel-inner.is-registering .login-age-field legend { margin-bottom: 2px; font-size: 10px; }
+  .login-panel-inner.is-registering .login-age-options { gap: 12px; }
+  .login-panel-inner.is-registering .button.full { min-height: 36px; padding-block: 7px; }
+  .login-panel-inner.is-registering + .login-auth-switch { margin-top: 6px; }
+}
+@media (max-width: 860px) and (max-height: 740px) {
+  .login-page.is-registering .login-features { display: none; }
+  .login-page.is-registering .login-visual-copy { display: none; }
+  .login-page.is-registering .login-panel-inner > .login-panel-content > .login-subtitle { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-visual,
+  .login-panel,
+  .login-panel-inner,
+  .login-panel-content,
+  .login-page.is-registering .login-visual,
+  .login-page.is-registering .login-panel,
+  .login-panel-message,
+  .login-visual-copy,
+  .login-panel-inner .login-auth-switch,
+  .login-panel-inner .login-floating-field > span:first-child,
+  .login-panel-inner .login-floating-field input,
+  .login-panel-inner .login-floating-field textarea,
+  .login-panel-inner .button.primary,
+  .login-panel-inner .auth-switch {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  .login-page > .login-panel .login-panel-inner { translate: none; opacity: 1; rotate: y 0deg; }
+  .login-panel-inner .login-panel-content { transform: none !important; }
+}
 
 .firearms-page { display: grid; gap: 22px; max-width: 1180px; margin: 0 auto; color: #233437; }
 .firearms-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 8px 2px; }

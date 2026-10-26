@@ -114,6 +114,14 @@ export function UsersPage() {
     queryKey: ['reactivation-requests'],
     queryFn: userService.reactivationRequests,
   });
+  const { data: passwordResetRequests = [], isLoading: passwordResetsLoading } = useQuery({
+    queryKey: ['password-reset-requests'],
+    queryFn: userService.passwordResetRequests,
+  });
+  const [issuedTemporaryPassword, setIssuedTemporaryPassword] = useState<{ requestId: string; citizenName: string; password: string; expiresAt: string } | null>(null);
+  const [verifiedPasswordResetIds, setVerifiedPasswordResetIds] = useState<Record<string, boolean>>({});
+  const [passwordResetConfirmation, setPasswordResetConfirmation] = useState<{ id: string; citizenName: string } | null>(null);
+  const [issuingTemporaryPasswordId, setIssuingTemporaryPasswordId] = useState<string | null>(null);
   const citizens = users.filter((user) => user.role === 'CITIZEN');
   const isSuperAdmin = (user: typeof users[number]) => user.roles?.some(({ role }) => role.name === 'SUPERADMIN') ?? false;
   const superAdmins = users.filter(isSuperAdmin);
@@ -145,6 +153,33 @@ export function UsersPage() {
       notify('error', t(message ?? 'Impossible de traiter la demande de réactivation.'));
     }
   };
+  const issueTemporaryPassword = async (id: string) => {
+    if (!verifiedPasswordResetIds[id]) return;
+    setIssuingTemporaryPasswordId(id);
+    try {
+      const request = passwordResetRequests.find((entry) => entry.id === id);
+      const citizenName = request?.user.nom ?? t('Citoyen');
+      const result = await userService.issueTemporaryPassword(id, true);
+      setIssuedTemporaryPassword({ requestId: id, citizenName, password: result.temporaryPassword, expiresAt: result.expiresAt });
+      setPasswordResetConfirmation(null);
+      await client.invalidateQueries({ queryKey: ['password-reset-requests'] });
+      notify('success', t('Code temporaire généré pour {{name}}. Il expire dans 24 heures et devra être changé à la première connexion.', { name: citizenName }));
+    } catch (error) {
+      const message = axios.isAxiosError(error) ? (error.response?.data as { message?: string } | undefined)?.message : undefined;
+      notify('error', t(message ?? 'Impossible de générer le mot de passe temporaire.'));
+    } finally {
+      setIssuingTemporaryPasswordId(null);
+    }
+  };
+  const copyTemporaryPassword = async () => {
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(issuedTemporaryPassword?.password ?? '');
+      notify('success', t('Mot de passe copié.'));
+    } catch {
+      notify('error', t('La copie a échoué.'));
+    }
+  };
   const group = (title: string, entries: typeof users) => <section className="user-role-group"><h2>{t(title)}</h2><div style={{ display: 'grid', gap: 10 }}>{entries.length === 0 ? <p className="muted">{t('Aucun utilisateur.')}</p> : entries.map((user) => <div className="recent-row" key={user.id}><Users size={18} /><span><strong>{user.nom ?? user.email ?? user.phone ?? t('Citoyen')}</strong><small>{user.email ?? user.phone ?? t('Aucune adresse email')} · {t(user.status)}</small></span></div>)}</div></section>;
   return <section className="panel users-page" style={{ padding: 24 }}>
     <p className="eyebrow">{t('Administration')}</p><h1>{t('Utilisateurs')}</h1><p>{t('Les citoyens et les administrateurs sont gérés dans des espaces distincts.')}</p>
@@ -174,6 +209,42 @@ export function UsersPage() {
         </article>)}
       </div>}
     </section>
+    <section className="user-role-group reactivation-requests">
+      <h2>{t('Demandes de réinitialisation par CIN')}</h2>
+      <p className="muted">{t('Vérifiez l’identité du citoyen au guichet avant de générer un code temporaire de 8 caractères. Il est valable 24 heures. Le citoyen se connecte avec son identifiant habituel et ce code, puis choisit un nouveau mot de passe.')}</p>
+      {issuedTemporaryPassword && <article className="recent-row" role="status">
+        <KeyRound size={18} />
+        <span>
+          <strong>{t('Code temporaire de 8 caractères pour {{name}} (affiché une seule fois)', { name: issuedTemporaryPassword.citizenName })}</strong>
+          <code>{issuedTemporaryPassword.password}</code>
+          <small>{t('À utiliser avant')} {new Date(issuedTemporaryPassword.expiresAt).toLocaleString()}</small>
+        </span>
+        <button className="button small" type="button" onClick={() => void copyTemporaryPassword()}>{t('Copier')}</button>
+        <button className="icon-button" type="button" aria-label={t('Masquer le mot de passe')} onClick={() => setIssuedTemporaryPassword(null)}><X size={16} /></button>
+      </article>}
+      {passwordResetsLoading ? <Loading /> : passwordResetRequests.length === 0
+        ? <p className="muted">{t('Aucune demande de réinitialisation en attente.')}</p>
+        : <div style={{ display: 'grid', gap: 10 }}>{passwordResetRequests.map((request) => <article className="recent-row" key={request.id}>
+          <KeyRound size={18} />
+          <span><strong>{request.user.nom ?? t('Citoyen')}</strong>
+            <small>CIN : {request.user.cin ?? t('Non renseignée')} · {t('Demandée le')} {new Date(request.createdAt).toLocaleString()}</small>
+            <small>{t(request.status === 'PASSWORD_RESET_REQUESTED' ? 'Demande de réinitialisation en attente' : request.status)}</small>
+            <label><input type="checkbox" checked={Boolean(verifiedPasswordResetIds[request.id])} onChange={(event) => setVerifiedPasswordResetIds((current) => ({ ...current, [request.id]: event.target.checked }))} /> {t('Je confirme avoir vérifié la CIN originale au guichet.')}</label>
+          </span>
+          <button className="button primary small" type="button" disabled={!verifiedPasswordResetIds[request.id]} onClick={() => setPasswordResetConfirmation({ id: request.id, citizenName: request.user.nom ?? t('Citoyen') })}>{t('Valider et générer le code temporaire')}</button>
+        </article>)}</div>}
+    </section>
+    {passwordResetConfirmation && <div className="modal-backdrop" role="presentation">
+      <section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="password-reset-confirm-title" aria-describedby="password-reset-confirm-description">
+        <p className="eyebrow">{t('Confirmation requise')}</p>
+        <h2 id="password-reset-confirm-title">{t('Confirmer la vérification de l’identité ?')}</h2>
+        <p id="password-reset-confirm-description">{t('Confirmez-vous avoir vérifié la CIN originale de {{name}} au guichet ? Son code temporaire sera affiché une seule fois et sera valable 24 heures.', { name: passwordResetConfirmation.citizenName })}</p>
+        <div className="modal-actions">
+          <button className="button" type="button" disabled={issuingTemporaryPasswordId === passwordResetConfirmation.id} onClick={() => setPasswordResetConfirmation(null)}>{t('Annuler')}</button>
+          <button className="button primary" type="button" disabled={issuingTemporaryPasswordId === passwordResetConfirmation.id} onClick={() => void issueTemporaryPassword(passwordResetConfirmation.id)}>{t(issuingTemporaryPasswordId === passwordResetConfirmation.id ? 'Traitement...' : 'Confirmer et générer le code')}</button>
+        </div>
+      </section>
+    </div>}
     {toast && <Toast toast={toast} />}
     <div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}><ShieldCheck size={18} /><strong>{t('Accès séparés par rôle')}</strong></div>
   </section>;

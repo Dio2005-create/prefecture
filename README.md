@@ -37,6 +37,16 @@ Le stockage métier, le premier flux d’indexation et l’authentification RBAC
 
 Ollama doit être installé localement et exposer les modèles configurés avant d'appeler l'indexation ou le RAG.
 
+## Récupération du mot de passe
+
+La page de connexion permet de demander un code OTP par email, ou de rechercher un compte par téléphone ou CIN. L’envoi de codes par SMS nécessite un fournisseur SMS, qui n’est pas configuré dans cette version. Pour un compte citoyen sans email ni téléphone, une demande liée à sa CIN est créée et visible dans **Back-Office > Utilisateurs**. Après vérification d’identité au guichet, un administrateur peut délivrer un mot de passe temporaire à usage unique, valable 24 heures. La première connexion avec ce mot de passe impose son remplacement.
+
+Les évolutions de schéma correspondantes sont appliquées avec les migrations Prisma habituelles :
+
+```powershell
+docker compose exec backend npx prisma migrate deploy
+```
+
 ## Tester le frontend
 
 Depuis la racine du projet :
