@@ -207,35 +207,6 @@ export function LoginPage() {
 
   return (
     <main className={`login-page${isRegistering ? ' is-registering' : ''}`}>
-      {/* Decorative entrance animation; hidden during the flip to keep the title clear. */}
-      <div className="login-character" aria-hidden="true">
-        <svg viewBox="0 0 170 190" focusable="false">
-          <g className="login-character-chair">
-            <path d="M44 111v-27h40v27M39 114h51M48 115l-5 42m42-42 5 42" />
-          </g>
-          <g className="login-character-standing">
-            <path className="login-character-trousers" d="m52 111-5 47 12 2 10-34 8 34 12-2-5-47z" />
-            <path className="login-character-shoe" d="M46 157h15l-2 7H43q-3-3 3-7m29 0h15l5 7H77q-3-3-2-7" />
-            <path className="login-character-shirt" d="M56 61q14-8 28 0l9 52q-22 9-46 0z" />
-            <path className="login-character-arm" d="m82 68 15 4 20-14" />
-            <path className="login-character-arm-other" d="m57 69-11 24 12 8" />
-            <path className="login-character-neck" d="M65 53h12v13H65z" />
-            <circle className="login-character-skin" cx="71" cy="36" r="17" />
-            <path className="login-character-hair" d="M54 34q1-19 18-18 15 1 17 16l-8-5-7 3-10-4-9 8z" />
-          </g>
-          <g className="login-character-seated">
-            <path className="login-character-trousers" d="m53 108 29 2 17 18-9 10-22-13-13 21-11-7 10-25z" />
-            <path className="login-character-shoe" d="m67 142 12 5-3 7-18-7q-1-4 9-5m23-8 11-8 6 6-13 13-8-4z" />
-            <path className="login-character-shirt" d="M56 61q14-8 28 0l9 51q-21 7-46-2z" />
-            <path className="login-character-arm" d="m83 69 13 17 13 2" />
-            <path className="login-character-arm-other" d="m57 70-9 24 12 10" />
-            <path className="login-character-neck" d="M65 53h12v13H65z" />
-            <circle className="login-character-skin" cx="71" cy="36" r="17" />
-            <path className="login-character-hair" d="M54 34q1-19 18-18 15 1 17 16l-8-5-7 3-10-4-9 8z" />
-          </g>
-          <path className="login-character-rope" d="M116 59h50" />
-        </svg>
-      </div>
       <section className="login-visual" aria-live="polite">
         <div className="login-visual-inner">
           <img src="/logoPrefet.png" alt={t('Logo de la préfecture')} className="login-logo" />

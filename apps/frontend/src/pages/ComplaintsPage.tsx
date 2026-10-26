@@ -180,6 +180,7 @@ export function AdminComplaintsPage() {
 
   const refresh = async () => {
     await client.invalidateQueries({ queryKey: ['admin-complaints'] });
+    await client.invalidateQueries({ queryKey: ['admin-navigation-complaints'] });
     await client.invalidateQueries({ queryKey: ['notifications'] });
   };
   const reviewMutation = useMutation({ mutationFn: complaintService.markInReview, onSuccess: refresh, onError: (mutationError) => { void errorMessage(mutationError, 'Impossible de mettre la réclamation en instruction.').then(setError); } });

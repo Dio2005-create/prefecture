@@ -257,6 +257,8 @@ export function AdminWorkflowPage() {
   const refreshRequestData = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['admin-requests'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-navigation-requests'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-navigation-appointments'] }),
       queryClient.invalidateQueries({ queryKey: ['admin-stats'] }),
       queryClient.invalidateQueries({ queryKey: ['citizen-requests'] }),
       queryClient.invalidateQueries({ queryKey: ['citizen-stats'] }),

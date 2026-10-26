@@ -9,6 +9,7 @@ const malagasy: Record<string, string> = {
   'Textes officiels': 'Lalàna ofisialy',
   Notifications: 'Fampandrenesana',
   'Notifications non lues : {{count}}': 'Fampandrenesana tsy mbola voavaky: {{count}}',
+  '{{label}} : {{count}} demandes en attente': '{{label}} : fangatahana {{count}} miandry',
   'Rendez-vous': 'Fotoana',
   'Évolution des demandes et des utilisateurs': 'Fiovan’ny fangatahana sy ny mpampiasa',
   'Inscriptions et demandes créées sur les six derniers mois.': 'Fisoratana sy fangatahana noforonina tao anatin’ny enim-bolana farany.',

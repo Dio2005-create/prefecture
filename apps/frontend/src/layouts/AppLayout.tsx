@@ -5,7 +5,7 @@ import { Archive, Bell, Bot, CalendarDays, FileText, LayoutDashboard, Menu, Sear
 import { createPortal } from 'react-dom';
 import { useAuth, type AuthUser } from '../auth';
 import { usePreferences } from '../preferences';
-import { authService, notificationService } from '../services/api';
+import { adminService, appointmentService, authService, complaintService, firearmsService, notificationService, userService } from '../services/api';
 import type { NotificationItem } from '../types';
 
 type AppLayoutVariant = 'frontoffice' | 'backoffice';
@@ -122,7 +122,51 @@ export function AppLayout({ children, variant }: { children: ReactNode; variant:
   const { pathname } = useLocation();
   const { logout, user } = useAuth();
   const { language, setLanguage, t } = usePreferences();
+  const isAdmin = variant === 'backoffice' && Boolean(user && (user.role === 'ADMIN' || user.roles.includes('ADMIN') || user.roles.includes('SUPERADMIN')));
+  const { data: adminRequests = [] } = useQuery({
+    queryKey: ['admin-navigation-requests'],
+    queryFn: () => adminService.listRequests(),
+    enabled: isAdmin,
+    refetchInterval: isAdmin ? 30000 : false,
+  });
+  const { data: firearmRequests = [] } = useQuery({
+    queryKey: ['admin-navigation-firearm-requests'],
+    queryFn: () => firearmsService.listAdminRequests(),
+    enabled: isAdmin,
+    refetchInterval: isAdmin ? 30000 : false,
+  });
+  const { data: complaints = [] } = useQuery({
+    queryKey: ['admin-navigation-complaints'],
+    queryFn: complaintService.listAdmin,
+    enabled: isAdmin,
+    refetchInterval: isAdmin ? 30000 : false,
+  });
+  const { data: adminAppointments = [] } = useQuery({
+    queryKey: ['admin-navigation-appointments'],
+    queryFn: appointmentService.listForAdmin,
+    enabled: isAdmin,
+    refetchInterval: isAdmin ? 30000 : false,
+  });
+  const { data: passwordResetRequests = [] } = useQuery({
+    queryKey: ['admin-navigation-password-resets'],
+    queryFn: userService.passwordResetRequests,
+    enabled: isAdmin,
+    refetchInterval: isAdmin ? 30000 : false,
+  });
+  const { data: reactivationRequests = [] } = useQuery({
+    queryKey: ['admin-navigation-reactivations'],
+    queryFn: userService.reactivationRequests,
+    enabled: isAdmin,
+    refetchInterval: isAdmin ? 30000 : false,
+  });
   const navigation = getNavigation(variant, user);
+  const navigationCounts: Record<string, number> = {
+    '/back/workflow': adminRequests.filter((request) => request.status === 'SUBMITTED').length,
+    '/back/armements': firearmRequests.filter((request) => request.status === 'PENDING').length,
+    '/back/reclamations': complaints.filter((complaint) => complaint.status === 'PENDING').length,
+    '/back/rendez-vous': adminAppointments.filter((appointment) => appointment.status === 'PENDING').length,
+    '/back/utilisateurs': passwordResetRequests.length + reactivationRequests.filter((request) => request.status === 'PENDING').length,
+  };
   const title = variant === 'backoffice'
     ? t('Back-Office préfecture')
     : '';
@@ -176,10 +220,13 @@ export function AppLayout({ children, variant }: { children: ReactNode; variant:
   const sidebar = <aside className={open ? 'sidebar is-open' : 'sidebar'}>
     <div className="brand"><span className="brand-mark"><Archive size={20} /></span><span>ARCHIVIA<small>{t('fonds préfectoral')}</small></span><button className="icon-button close-nav" onClick={() => setOpen(false)} aria-label={t('Fermer')}><X size={18} /></button></div>
     {title && <p className="nav-caption">{title}</p>}
-    <nav>{navigation.map(({ to, label, icon: Icon }) => <Fragment key={to}>
-      <NavLink to={to} end={to === navigation[0].to} onClick={() => { setOpen(false); setProfileMenuOpen(false); }}><Icon size={17} />{t(label)}</NavLink>
+    <nav>{navigation.map(({ to, label, icon: Icon }) => {
+      const count = isAdmin ? navigationCounts[to] ?? 0 : 0;
+      return <Fragment key={to}>
+      <NavLink to={to} end={to === navigation[0].to} aria-label={count > 0 ? t('{{label}} : {{count}} demandes en attente', { label: t(label), count }) : undefined} onClick={() => { setOpen(false); setProfileMenuOpen(false); }}><Icon size={17} />{t(label)}{count > 0 && <span className="nav-pending-count" aria-hidden="true">{count > 99 ? '99+' : count}</span>}</NavLink>
       {variant === 'frontoffice' && to === '/front/assistant' && <button ref={profileTriggerRef} className="icon-button nav-menu-button" type="button" aria-expanded={profileMenuOpen} aria-label={t(profileMenuOpen ? 'Fermer le menu' : 'Ouvrir le menu')} onClick={() => setProfileMenuOpen((value) => !value)}><Menu size={18} /></button>}
-    </Fragment>)}
+    </Fragment>;
+    })}
     </nav>
     <div className="sidebar-foot"><ShieldCheck size={16} /><span>{t('Environnement local')}<small>{t('Traitement confidentiel')}</small></span></div>
   </aside>;

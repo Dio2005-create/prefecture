@@ -132,6 +132,7 @@ export function UsersPage() {
       await Promise.all([
         client.invalidateQueries({ queryKey: ['users'] }),
         client.invalidateQueries({ queryKey: ['reactivation-requests'] }),
+        client.invalidateQueries({ queryKey: ['admin-navigation-reactivations'] }),
       ]);
       notify('success', t(status === 'DISABLED' ? 'Compte citoyen désactivé.' : 'Compte citoyen réactivé.'));
     } catch (error) {
@@ -145,6 +146,7 @@ export function UsersPage() {
       await Promise.all([
         client.invalidateQueries({ queryKey: ['users'] }),
         client.invalidateQueries({ queryKey: ['reactivation-requests'] }),
+        client.invalidateQueries({ queryKey: ['admin-navigation-reactivations'] }),
         client.invalidateQueries({ queryKey: ['notifications'] }),
       ]);
       notify('success', t(decision === 'APPROVED' ? 'Demande approuvée et compte réactivé.' : 'Demande refusée.'));
@@ -163,6 +165,7 @@ export function UsersPage() {
       setIssuedTemporaryPassword({ requestId: id, citizenName, password: result.temporaryPassword, expiresAt: result.expiresAt });
       setPasswordResetConfirmation(null);
       await client.invalidateQueries({ queryKey: ['password-reset-requests'] });
+      await client.invalidateQueries({ queryKey: ['admin-navigation-password-resets'] });
       notify('success', t('Code temporaire généré pour {{name}}. Il expire dans 24 heures et devra être changé à la première connexion.', { name: citizenName }));
     } catch (error) {
       const message = axios.isAxiosError(error) ? (error.response?.data as { message?: string } | undefined)?.message : undefined;
@@ -705,6 +708,7 @@ export function AdminAppointmentsPage() {
   const update = async (id: string, status: 'BOOKED' | 'CANCELLED' | 'COMPLETED') => {
     await appointmentService.updateStatus(id, status);
     await client.invalidateQueries({ queryKey: ['admin-appointments'] });
+    await client.invalidateQueries({ queryKey: ['admin-navigation-appointments'] });
     await client.invalidateQueries({ queryKey: ['admin-appointment-slots'] });
     await client.invalidateQueries({ queryKey: ['appointments', 'available'] });
   };

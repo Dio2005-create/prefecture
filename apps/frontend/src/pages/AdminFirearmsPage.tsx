@@ -101,6 +101,7 @@ export function AdminFirearmsPage() {
       setActionSuccess('La décision a été enregistrée et le citoyen a été notifié.');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['firearms-admin-requests'] }),
+        queryClient.invalidateQueries({ queryKey: ['admin-navigation-firearm-requests'] }),
         queryClient.invalidateQueries({ queryKey: ['firearms-admin-stats'] }),
         queryClient.invalidateQueries({ queryKey: ['firearms-citizen-dossier', variables.request.user?.id] }),
       ]);
