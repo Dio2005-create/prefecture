@@ -26,7 +26,7 @@ export const requestRequirements: Record<RequestType, RequestRequirements> = {
     attachments: [...cinPair('cin-demandeur', 'CIN du demandeur')],
   },
   RESIDENCE_CERTIFICATE: {
-    fields: [field('nomComplet', 'Nom et prénoms'), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('nomPere', 'Nom du père'), field('nomMere', 'Nom de la mère'), field('cin', 'Numéro CIN'), field('dateDelivranceCin', 'Date de délivrance de la CIN', 'date'), field('lieuDelivranceCin', 'Lieu de délivrance de la CIN'), field('adresse', 'Adresse actuelle', 'textarea'), field('lotLieuDit', 'Lot / lieu-dit')],
+    fields: [field('nomComplet', 'Nom et prénoms'), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('nomPere', 'Nom du père'), field('nomMere', 'Nom de la mère'), field('cin', 'Numéro CIN'), field('dateDelivranceCin', 'Date de délivrance de la CIN', 'date'), field('lieuDelivranceCin', 'Lieu de délivrance de la CIN'), field('adresse', 'Adresse actuelle', 'textarea'), field('fokontany', 'Fokontany'), field('lotLieuDit', 'Lot / lieu-dit')],
     attachments: [],
   },
   NATIONALITY_CERTIFICATE: {

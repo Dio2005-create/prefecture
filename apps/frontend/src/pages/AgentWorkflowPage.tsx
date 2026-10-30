@@ -31,7 +31,18 @@ const terminalStatuses = new Set(['APPROVED', 'REJECTED', 'ARCHIVED', 'CANCELLED
 
 interface RequestCard {
   request: CitizenRequest;
-  onApprove: (id: string, notes?: string, slotId?: string) => void;
+  onApprove: (
+    id: string,
+    notes?: string,
+    slotId?: string,
+    certificateAdministration?: {
+      certificateNumber: string;
+      reference: string;
+      fee: string;
+      receiptNumber: string;
+      issueLocation: string;
+    },
+  ) => void;
   onReject: (id: string, reason: string) => void;
   onRequestInfo: (id: string, info: string) => void;
   onEdit: (id: string, data: string) => void;
@@ -45,13 +56,30 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
   const [action, setAction] = useState<'approve' | 'reject' | 'info' | 'edit' | null>(null);
   const [input, setInput] = useState(action === 'edit' ? JSON.stringify(request.formData ?? {}, null, 2) : '');
   const [selectedAppointmentSlot, setSelectedAppointmentSlot] = useState('');
+  const [certificateAdministration, setCertificateAdministration] = useState(() => {
+    const saved = request.formData?.certificateAdministration;
+    const values = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved as Record<string, unknown> : {};
+    return {
+      certificateNumber: String(values.certificateNumber ?? ''),
+      reference: String(values.reference ?? ''),
+      fee: String(values.fee ?? request.fee ?? ''),
+      receiptNumber: String(values.receiptNumber ?? ''),
+      issueLocation: String(values.issueLocation ?? 'Ihosy'),
+    };
+  });
   const [attachmentsOpen, setAttachmentsOpen] = useState(false);
   const isCinRequest = ['CIN_REQUEST', 'CIN_RENEWAL'].includes(request.type);
+  const isResidenceApproval = request.type === 'RESIDENCE_CERTIFICATE' && request.status === 'IN_REVIEW';
   const hasScheduledCinAppointment = isCinRequest && Boolean(request.appointments?.some((appointment) => ['PENDING', 'BOOKED'].includes(appointment.status)));
 
   const handleAction = () => {
     if (action === 'approve') {
-      onApprove(request.id, input.trim(), isCinRequest && request.status === 'IN_REVIEW' ? selectedAppointmentSlot : undefined);
+      onApprove(
+        request.id,
+        input.trim(),
+        isCinRequest && request.status === 'IN_REVIEW' ? selectedAppointmentSlot : undefined,
+        isResidenceApproval ? certificateAdministration : undefined,
+      );
     } else if (action === 'reject') {
       onReject(request.id, input.trim());
     } else if (action === 'info') {
@@ -142,6 +170,29 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
                   </select>
                 </label>
                 <p>{t('La demande restera en attente jusqu’à la fin du rendez-vous. La CIN sera ensuite disponible au guichet.')}</p>
+              </> : isResidenceApproval ? <>
+                <p>{t('Renseignez les références administratives qui figureront sur le certificat de résidence délivré.')}</p>
+                <div className="firearms-form-grid">
+                  <label>{t('Numéro du certificat')} *
+                    <input required value={certificateAdministration.certificateNumber} onChange={(event) => setCertificateAdministration((current) => ({ ...current, certificateNumber: event.target.value }))} />
+                  </label>
+                  <label>{t('Référence FKT/RES')} *
+                    <input required value={certificateAdministration.reference} onChange={(event) => setCertificateAdministration((current) => ({ ...current, reference: event.target.value }))} />
+                  </label>
+                  <label>{t('Droits (Ar)')} *
+                    <input required inputMode="decimal" pattern="[0-9]+([.,][0-9]{1,2})?" value={certificateAdministration.fee} onChange={(event) => setCertificateAdministration((current) => ({ ...current, fee: event.target.value }))} />
+                  </label>
+                  <label>{t('Numéro de quittance')} *
+                    <input required value={certificateAdministration.receiptNumber} onChange={(event) => setCertificateAdministration((current) => ({ ...current, receiptNumber: event.target.value }))} />
+                  </label>
+                  <label>{t('Lieu de délivrance')} *
+                    <input required value={certificateAdministration.issueLocation} onChange={(event) => setCertificateAdministration((current) => ({ ...current, issueLocation: event.target.value }))} />
+                  </label>
+                </div>
+                <label style={{ display: 'block', marginBottom: 8 }}>
+                  <small style={{ fontWeight: 500 }}>{t("Notes d'approbation (optionnel)")}</small>
+                  <textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder={t('Notes...')} rows={2} style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid var(--color-border)', fontSize: '0.9rem' }} />
+                </label>
               </> : <>
                 <label style={{ display: 'block', marginBottom: 8 }}>
                   <small style={{ fontWeight: 500 }}>{t("Notes d'approbation (optionnel)")}</small>
@@ -158,7 +209,7 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
                 <button className="button request-cancel-button" onClick={() => setAction(null)}>
                   {t('Annuler')}
                 </button>
-                <button className="button primary request-confirm-button" onClick={handleAction} disabled={isLoading || (isCinRequest && request.status === 'IN_REVIEW' && !selectedAppointmentSlot)}>
+                <button className="button primary request-confirm-button" onClick={handleAction} disabled={isLoading || (isCinRequest && request.status === 'IN_REVIEW' && !selectedAppointmentSlot) || (isResidenceApproval && Object.values(certificateAdministration).some((value) => !value.trim()))}>
                   {t(isCinRequest && request.status === 'IN_REVIEW' ? 'Attribuer le rendez-vous' : 'Confirmer approbation')}
                 </button>
               </div>
@@ -268,7 +319,18 @@ export function AdminWorkflowPage() {
     ]);
   };
 
-  const handleApprove = async (id: string, notes?: string, slotId?: string) => {
+  const handleApprove = async (
+    id: string,
+    notes?: string,
+    slotId?: string,
+    certificateAdministration?: {
+      certificateNumber: string;
+      reference: string;
+      fee: string;
+      receiptNumber: string;
+      issueLocation: string;
+    },
+  ) => {
     setActionLoading(true);
     setWorkflowError('');
     try {
@@ -276,7 +338,7 @@ export function AdminWorkflowPage() {
       if (request?.status === 'IN_REVIEW' && ['CIN_REQUEST', 'CIN_RENEWAL'].includes(request.type)) {
         if (!slotId) throw new Error('Un créneau d’empreintes doit être sélectionné');
         await adminService.assignCinAppointment(id, slotId);
-      } else if (request?.status === 'IN_REVIEW') await adminService.approveRequest(id, notes);
+      } else if (request?.status === 'IN_REVIEW') await adminService.approveRequest(id, notes, certificateAdministration);
       else await adminService.submitForReview(id, notes || 'Dossier pris en charge par l’administration');
       await refreshRequestData();
     } catch (error) {

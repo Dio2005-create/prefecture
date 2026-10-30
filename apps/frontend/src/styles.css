@@ -641,7 +641,19 @@ nav a:hover, nav a.active { color: #fff; background: #233d49; border-left-color:
 .backoffice-shell .sidebar nav a { min-height: 34px; padding: 8px 10px; font-size: 11px; }
 .backoffice-shell .sidebar-foot { padding-top: 12px; font-size: 10px; }
 
-.request-page { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(360px, .9fr); gap: 20px; align-items: start; }
+.request-page { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+.request-page > * { width: 100%; min-width: 0; }
+.citizen-request-card { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.citizen-request-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.citizen-request-card-heading > strong { min-width: 0; overflow-wrap: anywhere; }
+.citizen-request-details { min-width: 0; margin-top: 12px; padding: 16px; border-color: var(--line); background: var(--surface-subtle); }
+.citizen-request-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 9px; min-width: 0; }
+.citizen-request-field { display: grid; align-content: start; gap: 5px; min-width: 0; padding: 11px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); font-size: 12px; }
+.citizen-request-field strong { color: var(--ink-muted); font-size: 11px; }
+.citizen-request-field span, .citizen-request-description { min-width: 0; overflow-wrap: anywhere; }
+.citizen-request-description { margin: 0; color: var(--ink-muted); line-height: 1.6; }
+.citizen-request-attachments { display: flex; flex-wrap: wrap; gap: 8px; }
+.citizen-request-attachments .button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 .request-form-panel, .request-list-panel { padding: 28px; }
 .request-form-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 22px; border-bottom: 1px solid #e7efeb; }
 .request-form-header h2 { margin: 5px 0 7px; color: #1b2a2b; font-size: 24px; letter-spacing: -.03em; }
@@ -956,6 +968,7 @@ tbody tr:hover { background: #f7faf9; }
 @keyframes page-enter { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 1100px) {
 	.content { padding: 34px 30px 60px; }
+	.request-page { grid-template-columns: minmax(0, 1fr); }
 	.frontoffice-shell .sidebar { padding-inline: 18px; gap: 12px; }
 	.frontoffice-shell .brand { min-width: auto; }
 	.frontoffice-shell .nav-caption { display: none; }

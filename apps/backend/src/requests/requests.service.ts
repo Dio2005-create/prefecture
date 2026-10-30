@@ -130,7 +130,9 @@ export class RequestsService {
     if (!requestTypesByServiceCode[service.code]?.includes(data.type)) {
       throw new BadRequestException('Cette démarche n’est pas disponible dans le service sélectionné');
     }
-    this.validateFormData(data.type, data.formData ?? {});
+    const formData = { ...(data.formData ?? {}) };
+    delete formData.certificateAdministration;
+    this.validateFormData(data.type, formData);
     const configuredFee = await this.prisma.platformSetting.findUnique({ where: { key: `fee.${data.type}` } });
     const fee = configuredFee ? Number(configuredFee.value) : defaultFees[data.type];
     if (!Number.isFinite(fee) || fee < 0) throw new BadRequestException('Le tarif de cette démarche est invalide');
@@ -157,7 +159,7 @@ export class RequestsService {
         type: data.type,
         title: data.title ?? service.nameFr,
         description: data.description ?? '',
-        formData: (data.formData ?? {}) as Prisma.InputJsonValue,
+        formData: formData as Prisma.InputJsonValue,
         fee,
         status: 'SUBMITTED',
         history: {
@@ -315,9 +317,15 @@ export class RequestsService {
     if (request.userId !== userId) throw new ForbiddenException('Vous ne pouvez pas modifier cette demande');
     this.ensureCitizenCanEdit(request.status);
 
-    const formData = data.formData ?? (request.formData && typeof request.formData === 'object' && !Array.isArray(request.formData)
+    const storedFormData = request.formData && typeof request.formData === 'object' && !Array.isArray(request.formData)
       ? request.formData as Record<string, unknown>
-      : {});
+      : {};
+    const formData = data.formData ? { ...data.formData } : { ...storedFormData };
+    if (storedFormData.certificateAdministration !== undefined) {
+      formData.certificateAdministration = storedFormData.certificateAdministration;
+    } else {
+      delete formData.certificateAdministration;
+    }
     this.validateFormData(request.type, formData);
 
     const updated = await this.prisma.$transaction(async (transaction) => {
@@ -531,11 +539,114 @@ export class RequestsService {
     ]);
 
     return new Promise<Buffer>((resolve, reject) => {
-      const document = new PDFDocument({ size: 'A4', margin: 56 });
+      const document = new PDFDocument({
+        size: 'A4',
+        ...(request.type === RequestType.RESIDENCE_CERTIFICATE ? { layout: 'landscape' as const, margin: 35 } : { margin: 56 }),
+      });
       const chunks: Buffer[] = [];
       document.on('data', (chunk: Buffer) => chunks.push(chunk));
       document.on('end', () => resolve(Buffer.concat(chunks)));
       document.on('error', reject);
+      if (request.type === RequestType.RESIDENCE_CERTIFICATE) {
+        const getText = (key: string) => {
+          const value = formData[key];
+          return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
+        };
+        const formatDate = (value: string) => {
+          if (!value) return '';
+          const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+          return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('fr-FR');
+        };
+        const administration = formData.certificateAdministration && typeof formData.certificateAdministration === 'object'
+          ? formData.certificateAdministration as Record<string, unknown>
+          : {};
+        const getAdministrativeText = (key: string) => {
+          const value = administration[key];
+          return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
+        };
+        const issuedAt = getAdministrativeText('issuedAt');
+        const issueDate = formatDate(issuedAt) || new Date().toLocaleDateString('fr-FR');
+        const pageWidth = document.page.width;
+        const pageHeight = document.page.height;
+        const margin = 35;
+        const contentWidth = pageWidth - margin * 2;
+        const centerText = (value: string, y: number, size: number, bold = false) => {
+          document.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(size)
+            .text(value, margin, y, { width: contentWidth, align: 'center', lineBreak: false });
+        };
+        const fieldLine = (label: string, value: string, x: number, y: number, width: number) => {
+          document.font('Helvetica-Bold').fontSize(8.5);
+          const labelWidth = Math.min(document.widthOfString(label) + 5, width * 0.48);
+          document.font('Helvetica-Bold').fontSize(8.5).text(label, x, y, { width: labelWidth, lineBreak: false });
+          const valueX = x + labelWidth;
+          const valueWidth = width - labelWidth;
+          document.moveTo(valueX, y + 11).lineTo(valueX + valueWidth, y + 11).lineWidth(0.35).strokeColor('#8b9299').stroke();
+          document.font('Helvetica').fontSize(9).fillColor('#20252a')
+            .text(value || ' ', valueX + 3, y - 1, { width: valueWidth - 6, height: 14, lineBreak: false, ellipsis: true });
+        };
+        document.save();
+        document.rect(18, 18, pageWidth - 36, pageHeight - 36).lineWidth(0.8).strokeColor('#7d858b').stroke();
+        document.restore();
+        centerText("REPOBLIKAN'I MADAGASIKARA", 28, 10, true);
+        centerText('Fitiavana - Tanindrazana - Fandrosoana', 41, 8);
+        centerText("MINISTERE DE L'INTERIEUR ET DE LA DECENTRALISATION", 54, 8, true);
+        centerText('DISTRICT D’IHOSY  /  DISTRIKAN’I IHOSY', 67, 8);
+        centerText('COMMUNE D’IHOSY  /  KAOMININA IHOSY', 79, 8);
+        centerText(`FOKONTANY DE ${getText('fokontany').toLocaleUpperCase('fr')}  /  FOKONTANY ${getText('fokontany').toLocaleUpperCase('fr')}`, 91, 8);
+        centerText('CERTIFICAT DE RESIDENCE', 112, 14, true);
+        centerText('FANAMARINAM-PONENANA', 129, 10, true);
+        document.font('Helvetica').fontSize(8.5)
+          .text(`Je soussigne(e), Chef de Fokontany de ${getText('fokontany')}, certifie que :`, margin, 151, { width: contentWidth });
+        document.fontSize(8).fillColor('#454b50')
+          .text(`Izaho izay manao sonia eto ambany, Lehiben'ny Fokontany ${getText('fokontany')}, dia manamarina fa :`, margin, 164, { width: contentWidth });
+
+        const columnGap = 20;
+        const columnWidth = (contentWidth - columnGap) / 2;
+        fieldLine('Nom et prenoms / Anarana:', getText('nomComplet'), margin, 190, columnWidth);
+        fieldLine('Ne(e) le / Teraka:', `${formatDate(getText('dateNaissance'))} a ${getText('lieuNaissance')}`, margin + columnWidth + columnGap, 190, columnWidth);
+        fieldLine('Fils / fille de / Zanak’i:', getText('nomPere'), margin, 215, columnWidth);
+        fieldLine('Et de / sy:', getText('nomMere'), margin + columnWidth + columnGap, 215, columnWidth);
+        fieldLine('Titulaire CIN / Manana CIN:', getText('cin'), margin, 240, columnWidth);
+        fieldLine('Delivree le / Nomena ny:', `${formatDate(getText('dateDelivranceCin'))} a ${getText('lieuDelivranceCin')}`, margin + columnWidth + columnGap, 240, columnWidth);
+        fieldLine('Demeurant / Monina ao:', getText('adresse'), margin, 265, contentWidth);
+        fieldLine('Lot / Lieu-dit:', getText('lotLieuDit'), margin, 290, columnWidth);
+        fieldLine('Fokontany:', getText('fokontany'), margin + columnWidth + columnGap, 290, columnWidth);
+
+        document.font('Helvetica').fontSize(8.5)
+          .text(`Est actuellement resident(e) dans le Fokontany de ${getText('fokontany')} et ce, jusqu'a ce jour.`, margin, 319, { width: contentWidth });
+        document.fontSize(8).fillColor('#454b50')
+          .text(`Monina ao amin'io Fokontany io izy hatramin'izao.`, margin, 332, { width: contentWidth });
+        document.fontSize(8.5).fillColor('#20252a')
+          .text('En foi de quoi, le present certificat lui est delivre pour servir et valoir ce que de droit.', margin, 348, { width: contentWidth });
+        document.fontSize(8).fillColor('#454b50')
+          .text('Izany no antony nanomezana izao fanamarinana izao mba hampiasaina araka ny tokony ho izy.', margin, 361, { width: contentWidth });
+
+        const referenceY = 388;
+        const referenceFields = [
+          [`N° ${getAdministrativeText('certificateNumber')}`, 120],
+          [`FKT/RES. ${getAdministrativeText('reference')}`, 195],
+          [`DROIT : Ar ${getAdministrativeText('fee')}`, 155],
+          [`QUITT. N° ${getAdministrativeText('receiptNumber')}`, 160],
+        ] as const;
+        let referenceX = margin;
+        for (const [label, width] of referenceFields) {
+          document.font('Helvetica-Bold').fontSize(7.5).text(label, referenceX, referenceY, { width, lineBreak: false, ellipsis: true });
+          referenceX += width;
+        }
+        const issueLocation = getAdministrativeText('issueLocation') || 'Ihosy';
+        document.font('Helvetica').fontSize(8.5)
+          .text(`Fait a ${issueLocation}, le ${issueDate}     /     Natao tao ${issueLocation}, ny ${issueDate}`, margin, 414, { width: contentWidth, align: 'right' });
+
+        const signatureX = pageWidth - margin - 190;
+        document.font('Helvetica-Bold').fontSize(8.5).text('Le Chef de Fokontany', signatureX, 440, { width: 190, align: 'center' });
+        document.font('Helvetica').fontSize(8).text("Lehiben'ny Fokontany", signatureX, 452, { width: 190, align: 'center' });
+        if (signatureImage) document.image(signatureImage, signatureX + 20, 463, { fit: [105, 46] });
+        if (stampImage) document.image(stampImage, signatureX + 95, 460, { fit: [70, 55] });
+        document.font('Helvetica').fontSize(7).fillColor('#697178')
+          .text("Document delivre par e-Servisy d'Ihosy apres approbation administrative.", margin, pageHeight - 48, { width: contentWidth, align: 'center' });
+        document.end();
+        return;
+      }
       const labels: Record<string, string> = {
         BIRTH_CERTIFICATE: 'CERTIFICAT / EXTRAIT DE NAISSANCE',
         RESIDENCE_CERTIFICATE: 'CERTIFICAT DE RESIDENCE',

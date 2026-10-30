@@ -73,6 +73,7 @@ export default function App() {
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/login/admin" element={<LoginPage adminPortal />} />
             <Route path="/" element={<RoleLanding />} />
 
             <Route

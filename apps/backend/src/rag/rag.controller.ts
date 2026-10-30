@@ -2,6 +2,8 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, Unauthor
 import { SearchDocumentsDto } from '../documents/dto/search-documents.dto';
 import { RagService } from './rag.service';
 import { AuthGuard } from '../auth/auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { UpdateChatConversationDto } from './dto/update-chat-conversation.dto';
 
 @Controller('rag')
@@ -10,6 +12,8 @@ export class RagController {
   constructor(private readonly ragService: RagService) {}
 
   @Post('search')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
   search(@Body() data: SearchDocumentsDto, @Req() request: { user?: { id?: string } }) {
     if (!request.user?.id) throw new UnauthorizedException('Utilisateur non authentifié');
     return this.ragService.rechercher(data.query, data.topK, request.user.id);

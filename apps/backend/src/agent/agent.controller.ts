@@ -162,8 +162,21 @@ export class AgentController {
 
   @Post('requests/:id/approve')
   @Roles('ADMIN')
-  async approveRequest(@Param('id') id: string, @Req() req: { user?: { id: string } }, @Body() body?: { notes?: string }) {
-    return this.agentService.approveRequest(id, req.user?.id ?? '', body?.notes);
+  async approveRequest(
+    @Param('id') id: string,
+    @Req() req: { user?: { id: string } },
+    @Body() body?: {
+      notes?: string;
+      certificateAdministration?: {
+        certificateNumber: string;
+        reference: string;
+        fee: string;
+        receiptNumber: string;
+        issueLocation: string;
+      };
+    },
+  ) {
+    return this.agentService.approveRequest(id, req.user?.id ?? '', body?.notes, body?.certificateAdministration);
   }
 
   @Post('requests/:id/reject')

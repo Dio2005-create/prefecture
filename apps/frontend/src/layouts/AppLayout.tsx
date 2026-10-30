@@ -18,7 +18,6 @@ const citizenNavigation = [
   { to: '/front/informations', label: 'Textes officiels', labelMg: 'Lalàna ofisialy', icon: FileText },
   { to: '/front/rendez-vous', label: 'Rendez-vous', labelMg: 'Fotoana', icon: CalendarDays },
   { to: '/front/reclamations', label: 'Réclamations', labelMg: 'Fitarainana', icon: ShieldCheck },
-  { to: '/front/assistant', label: 'Assistant IA', labelMg: 'Mpanampy IA', icon: Bot },
 ];
 
 const agentNavigation = [
@@ -26,16 +25,13 @@ const agentNavigation = [
   { to: '/back/workflow', label: 'File des dossiers', labelMg: 'Filaharan’ny dosie', icon: CheckSquare },
   { to: '/back/reclamations', label: 'Réclamations citoyennes', labelMg: 'Fitarainana', icon: ShieldCheck },
   { to: '/back/armements', label: 'Contrôle des armements', labelMg: 'Fanaraha-maso fitaovam-piadiana', icon: ShieldCheck },
-  { to: '/back/modeles', label: 'Modèles de documents', labelMg: 'Modelin-taratasy', icon: FileText },
-  { to: '/back/cachets', label: 'Cachets & signatures', labelMg: 'Tombokase sy sonia', icon: ShieldCheck },
   { to: '/back/documents', label: 'Archives', labelMg: 'Tahiry', icon: FileText },
   { to: '/back/publications', label: 'Arrêtés & communiqués', labelMg: 'Didy sy fampahafantarana', icon: FileText },
   { to: '/back/recherche', label: 'Recherche sémantique', labelMg: 'Fikarohana', icon: Search },
-  { to: '/back/assistant', label: 'Assistant IA', labelMg: 'Mpanampy IA', icon: Bot },
   { to: '/back/rendez-vous', label: 'Rendez-vous', labelMg: 'Fotoana', icon: CalendarDays },
 ];
 
-const adminNavigation = [...agentNavigation, { to: '/back/pilotage', label: 'KPI et pilotage', labelMg: 'Tondro', icon: BriefcaseBusiness }, { to: '/back/utilisateurs', label: 'Utilisateurs', labelMg: 'Mpampiasa', icon: UserRound }, { to: '/back/parametres', label: 'Paramètres', labelMg: 'Fikirana', icon: Settings }];
+const adminNavigation = [...agentNavigation, { to: '/back/utilisateurs', label: 'Utilisateurs', labelMg: 'Mpampiasa', icon: UserRound }, { to: '/back/parametres', label: 'Paramètres', labelMg: 'Fikirana', icon: Settings }];
 
 function getNavigation(variant: AppLayoutVariant, user: AuthUser | null) {
   if (variant === 'frontoffice') return citizenNavigation;
@@ -47,7 +43,7 @@ function getProfileName(user: AuthUser | null, variant: AppLayoutVariant, langua
   return language === 'mg' ? 'Mpandrindra' : 'Administrateur';
 }
 
-function NavigationPreferences({ showNotifications, showAdminNotifications = false }: { showNotifications: boolean; showAdminNotifications?: boolean }) {
+function NavigationPreferences({ showNotifications, showAdminNotifications = false, showCitizenAssistant = false, showAdminAssistant = false }: { showNotifications: boolean; showAdminNotifications?: boolean; showCitizenAssistant?: boolean; showAdminAssistant?: boolean }) {
   const { language, setLanguage, theme, toggleTheme, t } = usePreferences();
   const { authenticated, user, updateUser } = useAuth();
   const { pathname } = useLocation();
@@ -89,12 +85,12 @@ function NavigationPreferences({ showNotifications, showAdminNotifications = fal
       <button type="button" aria-pressed={language === 'mg'} onClick={() => void changeLanguage('mg')}>MG</button>
     </div>
     {languageError && <span className="language-preference-error" role="alert">{t('Impossible d’enregistrer la langue. Réessayez.')}</span>}
-    <button className="icon-button theme-toggle" type="button" onClick={toggleTheme} aria-label={t(theme === 'light' ? 'Activer le mode sombre' : 'Activer le mode clair')} title={t(theme === 'light' ? 'Mode sombre' : 'Mode clair')}>
-      {theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}
-    </button>
     {showNotifications && <NavLink className="icon-button notification-nav-button" to="/front/notifications" aria-label={t('Notifications non lues : {{count}}', { count: unreadCount })} title={t('Notifications')}>
       <Bell size={17} />
       {unreadCount > 0 && <span className="notification-nav-count">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+    </NavLink>}
+    {showCitizenAssistant && <NavLink className="icon-button" to="/front/assistant" aria-label={t('Assistant IA')} title={t('Assistant IA')}>
+      <Bot size={17} />
     </NavLink>}
     {showAdminNotifications && <div className="admin-notification-control">
       <button className="icon-button notification-nav-button" type="button" aria-expanded={notificationsOpen} aria-label={t('Notifications non lues : {{count}}', { count: unreadCount })} title={t('Notifications')} onClick={() => setNotificationsOpen((open) => !open)}>
@@ -109,6 +105,12 @@ function NavigationPreferences({ showNotifications, showAdminNotifications = fal
         </article>)}
       </section>}
     </div>}
+    {showAdminAssistant && <NavLink className="icon-button" to="/back/assistant" aria-label={t('Assistant IA')} title={t('Assistant IA')}>
+      <Bot size={17} />
+    </NavLink>}
+    <button className="icon-button theme-toggle" type="button" onClick={toggleTheme} aria-label={t(theme === 'light' ? 'Activer le mode sombre' : 'Activer le mode clair')} title={t(theme === 'light' ? 'Mode sombre' : 'Mode clair')}>
+      {theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}
+    </button>
   </div>;
 }
 
@@ -224,15 +226,15 @@ export function AppLayout({ children, variant }: { children: ReactNode; variant:
       const count = isAdmin ? navigationCounts[to] ?? 0 : 0;
       return <Fragment key={to}>
       <NavLink to={to} end={to === navigation[0].to} aria-label={count > 0 ? t('{{label}} : {{count}} demandes en attente', { label: t(label), count }) : undefined} onClick={() => { setOpen(false); setProfileMenuOpen(false); }}><Icon size={17} />{t(label)}{count > 0 && <span className="nav-pending-count" aria-hidden="true">{count > 99 ? '99+' : count}</span>}</NavLink>
-      {variant === 'frontoffice' && to === '/front/assistant' && <button ref={profileTriggerRef} className="icon-button nav-menu-button" type="button" aria-expanded={profileMenuOpen} aria-label={t(profileMenuOpen ? 'Fermer le menu' : 'Ouvrir le menu')} onClick={() => setProfileMenuOpen((value) => !value)}><Menu size={18} /></button>}
     </Fragment>;
     })}
+    {variant === 'frontoffice' && <button ref={profileTriggerRef} className="icon-button nav-menu-button" type="button" aria-expanded={profileMenuOpen} aria-label={t(profileMenuOpen ? 'Fermer le menu' : 'Ouvrir le menu')} onClick={() => setProfileMenuOpen((value) => !value)}><Menu size={18} /></button>}
     </nav>
     <div className="sidebar-foot"><ShieldCheck size={16} /><span>{t('Environnement local')}<small>{t('Traitement confidentiel')}</small></span></div>
   </aside>;
   const profilePath = variant === 'frontoffice' ? '/front/profil' : '/back/profil';
   const passwordPath = variant === 'frontoffice' ? '/front/parametres' : '/back/mot-de-passe';
-  const topbar = <header className="topbar">{variant === 'backoffice' && <button className="icon-button menu-button" onClick={() => setOpen(true)} aria-label={t('Ouvrir le menu')}><Menu size={20} /></button>}<NavigationPreferences showNotifications={variant === 'frontoffice'} showAdminNotifications={variant === 'backoffice'} />  <div className="profile"><span className="avatar">{variant === 'frontoffice' ? <UserRound size={16} /> : <BriefcaseBusiness size={16} />}</span><span className="profile-identity"><strong>{profileName}</strong><span className="online-indicator" role="img" aria-label={t('En ligne')} title={t('En ligne')} /></span>{variant === 'backoffice' && <button ref={profileTriggerRef} className="icon-button profile-menu-trigger" type="button" aria-expanded={profileMenuOpen} aria-label={t('Ouvrir le menu du profil')} onClick={() => setProfileMenuOpen((value) => !value)}><UserRound size={17} /></button>}</div></header>;
+  const topbar = <header className="topbar">{variant === 'backoffice' && <button className="icon-button menu-button" onClick={() => setOpen(true)} aria-label={t('Ouvrir le menu')}><Menu size={20} /></button>}<NavigationPreferences showNotifications={variant === 'frontoffice'} showAdminNotifications={variant === 'backoffice'} showCitizenAssistant={variant === 'frontoffice'} showAdminAssistant={variant === 'backoffice'} />  <div className="profile"><span className="avatar">{variant === 'frontoffice' ? <UserRound size={16} /> : <BriefcaseBusiness size={16} />}</span><span className="profile-identity"><strong>{profileName}</strong><span className="online-indicator" role="img" aria-label={t('En ligne')} title={t('En ligne')} /></span>{variant === 'backoffice' && <button ref={profileTriggerRef} className="icon-button profile-menu-trigger" type="button" aria-expanded={profileMenuOpen} aria-label={t('Ouvrir le menu du profil')} onClick={() => setProfileMenuOpen((value) => !value)}><UserRound size={17} /></button>}</div></header>;
   return <div className={`${variant === 'frontoffice' ? 'app-shell frontoffice-shell' : 'app-shell backoffice-shell'}${variant === 'frontoffice' && open ? ' navigation-open' : ''}`}>
     {variant === 'frontoffice' ? <div className="frontoffice-sticky-header">{sidebar}{topbar}</div> : sidebar}
     {open && variant === 'backoffice' && <button className="scrim" onClick={() => setOpen(false)} aria-label={t('Fermer le menu')} />}
@@ -242,6 +244,6 @@ export function AppLayout({ children, variant }: { children: ReactNode; variant:
       <NavLink to={passwordPath} onClick={() => setProfileMenuOpen(false)}><KeyRound size={15} /> {t('Changer le mot de passe')}</NavLink>
       <button type="button" onClick={() => { setProfileMenuOpen(false); setConfirmLogout(true); }}><LogOut size={15} /> {t('Déconnexion')}</button>
     </div>, document.body)}
-    {confirmLogout && <div className="modal-backdrop" role="presentation"><section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="logout-title"><p className="eyebrow">{t('Session sécurisée')}</p><h2 id="logout-title">{t('Confirmer la déconnexion')}</h2><p>{t('Votre session locale sera fermée sur cet appareil.')}</p><div className="modal-actions"><button className="button" onClick={() => setConfirmLogout(false)}>{t('Annuler')}</button><button className="button primary" onClick={() => { setConfirmLogout(false); void logout(); }}>{t('Se déconnecter')}</button></div></section></div>}
+    {confirmLogout && <div className="modal-backdrop" role="presentation"><section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="logout-title"><p className="eyebrow">{t('Session sécurisée')}</p><h2 id="logout-title">{t('Confirmer la déconnexion')}</h2><p>{t('Votre session locale sera fermée sur cet appareil.')}</p><div className="modal-actions"><button className="button" onClick={() => setConfirmLogout(false)}>{t('Annuler')}</button><button className="button primary" onClick={() => { setConfirmLogout(false); void logout(variant === 'backoffice'); }}>{t('Se déconnecter')}</button></div></section></div>}
   </div>;
 }

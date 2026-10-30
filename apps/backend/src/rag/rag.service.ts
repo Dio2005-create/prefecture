@@ -1,6 +1,8 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { FastApiAiService } from '../ai/fastapi-ai.service';
+import { QdrantService } from '../ai/qdrant.service';
+import { SearchHit } from '../ai/ai.types';
 import { findRequestModel, requestModels } from '../requests/request-models';
 import { getRequestRequirements } from '../requests/request-requirements';
 import { existsSync } from 'node:fs';
@@ -12,14 +14,57 @@ export class RagService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ai: FastApiAiService,
+    private readonly qdrant: QdrantService,
   ) {}
 
   async rechercher(question: string, topK: number, utilisateurId: string) {
     if (!utilisateurId) throw new UnauthorizedException('Utilisateur non authentifié');
-    const term = this.extraireRechercheDocumentPersonnelle(question) ?? this.termesRecherche(question).at(-1);
-    if (!term) return [];
-    const { hits } = await this.rechercherDansDocumentsPersonnels(utilisateurId, term, topK);
-    return hits;
+    const query = question.trim();
+    if (!query) return [];
+    const limit = Math.max(1, Math.min(topK, 20));
+    const lexicalChunks = await this.prisma.chunk.findMany({
+      where: {
+        contenu: { contains: query, mode: 'insensitive' },
+        document: { statut: { in: ['VALIDE', 'ARCHIVE', 'ERREUR'] } },
+      },
+      take: limit,
+      select: { id: true, documentId: true, contenu: true, document: { select: { titre: true } } },
+    });
+    const lexicalHits: SearchHit[] = lexicalChunks.map((chunk) => ({
+      chunkId: chunk.id,
+      documentId: chunk.documentId,
+      contenu: chunk.contenu,
+      score: 1,
+      titre: chunk.document.titre,
+    }));
+
+    let rankedHits: SearchHit[];
+    try {
+      const vector = await this.ai.vectoriser(query);
+      const vectorHits = await this.qdrant.rechercher(vector, limit * 5);
+      const eligibleDocuments = await this.prisma.documentAdministratif.findMany({
+        where: {
+          statut: { in: ['VALIDE', 'ARCHIVE'] },
+          chunks: { some: { id: { in: vectorHits.map((hit) => hit.chunkId) } } },
+        },
+        select: { id: true, titre: true },
+      });
+      const documentTitles = new Map(eligibleDocuments.map((document) => [document.id, document.titre]));
+      rankedHits = vectorHits
+        .filter((hit) => documentTitles.has(hit.documentId))
+        .map((hit) => ({ ...hit, titre: documentTitles.get(hit.documentId) }));
+    } catch (error) {
+      if (!(error instanceof ServiceUnavailableException)) throw error;
+      this.logger.warn(`Recherche vectorielle indisponible, utilisation de la recherche textuelle: ${error.message}`);
+      return lexicalHits;
+    }
+
+    for (const hit of lexicalHits) {
+      if (!rankedHits.some((rankedHit) => rankedHit.chunkId === hit.chunkId)) {
+        rankedHits.unshift(hit);
+      }
+    }
+    return rankedHits.slice(0, limit);
   }
 
   async repondre(

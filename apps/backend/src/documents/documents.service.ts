@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { StatutDocument, TypeDocument } from '@prisma/client';
 import { QdrantService } from '../ai/qdrant.service';
 import { FastApiAiService } from '../ai/fastapi-ai.service';
@@ -9,6 +9,8 @@ import { QueryDocumentsDto, UpdateDocumentDto } from './dto/update-document.dto'
 
 @Injectable()
 export class DocumentsService {
+  private readonly logger = new Logger(DocumentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly chunker: ChunkingService,
@@ -46,7 +48,7 @@ export class DocumentsService {
         data: { contenuTexte: texte || null, categorieId: categorie.id, methodeClassification: 'AUTOMATIQUE', etapeTraitement: 'OCR' },
       });
       if (texte) return this.indexer(id);
-      return this.findOne(id);
+      throw new Error('Aucun texte n’a pu être extrait du document');
     } catch (error) {
       await this.prisma.documentAdministratif.update({ where: { id }, data: { statut: 'ERREUR', erreurTraitement: error instanceof Error ? error.message : 'Erreur de traitement' } });
       return this.findOne(id);
@@ -61,17 +63,21 @@ export class DocumentsService {
   }
 
   async findAll(query: QueryDocumentsDto) {
-    await this.normaliserDocumentsExistants();
+    const dateFilter = this.dateFilter(query.dateFrom, query.dateTo);
+    const searchFilter = query.search ? [
+      { titre: { contains: query.search, mode: 'insensitive' as const } },
+      { reference: { contains: query.search, mode: 'insensitive' as const } },
+      { contenuTexte: { contains: query.search, mode: 'insensitive' as const } },
+      { chunks: { some: { contenu: { contains: query.search, mode: 'insensitive' as const } } } },
+    ] : undefined;
     const where = {
       ...(query.type ? { type: query.type as TypeDocument } : {}),
       ...(query.categorieId ? { categorieId: query.categorieId } : {}),
       ...(query.statut ? { statut: query.statut as StatutDocument } : {}),
       ...(query.serviceEmetteur ? { serviceEmetteur: { contains: query.serviceEmetteur, mode: 'insensitive' as const } } : {}),
       ...(query.reference ? { reference: { contains: query.reference, mode: 'insensitive' as const } } : {}),
-      ...(query.search ? { OR: [
-        { titre: { contains: query.search, mode: 'insensitive' as const } },
-        { reference: { contains: query.search, mode: 'insensitive' as const } },
-      ] } : {}),
+      ...(dateFilter ? { date: dateFilter } : {}),
+      ...(searchFilter ? { OR: searchFilter } : {}),
     };
     const [items, total] = await this.prisma.$transaction([
       this.prisma.documentAdministratif.findMany({
@@ -86,22 +92,6 @@ export class DocumentsService {
     return { items, total, page: query.page, limit: query.limit };
   }
 
-  private async normaliserDocumentsExistants() {
-    const documents = await this.prisma.documentAdministratif.findMany({
-      where: { statut: { in: ['BROUILLON', 'EN_TRAITEMENT'] }, contenuTexte: { not: null } },
-      select: { id: true, contenuTexte: true },
-    });
-    for (const document of documents) {
-      const chunks = this.chunker.decouper(document.contenuTexte ?? '');
-      if (!chunks.length) continue;
-      const count = await this.prisma.chunk.count({ where: { documentId: document.id } });
-      if (!count) {
-        await this.prisma.chunk.createMany({ data: chunks.map((chunk) => ({ documentId: document.id, contenu: chunk.contenu, position: chunk.position })) });
-      }
-      await this.prisma.documentAdministratif.update({ where: { id: document.id }, data: { statut: 'VALIDE', etapeTraitement: 'INDEXATION', erreurTraitement: null } });
-    }
-  }
-
   findOne(id: string) {
     return this.prisma.documentAdministratif.findUniqueOrThrow({
       where: { id },
@@ -109,13 +99,51 @@ export class DocumentsService {
     });
   }
 
-  listPublic() {
+  listPublic(query: QueryDocumentsDto) {
+    const dateFilter = this.dateFilter(query.dateFrom, query.dateTo);
+    const searchFilter = query.search ? [
+      { titre: { contains: query.search, mode: 'insensitive' as const } },
+      { reference: { contains: query.search, mode: 'insensitive' as const } },
+      { contenuTexte: { contains: query.search, mode: 'insensitive' as const } },
+    ] : undefined;
     return this.prisma.documentAdministratif.findMany({
-      where: { type: { in: ['ARRETE', 'COURRIER'] }, statut: { in: ['VALIDE', 'ARCHIVE'] } },
+      where: {
+        type: { in: ['ARRETE', 'COURRIER'] },
+        statut: { in: ['VALIDE', 'ARCHIVE'] },
+        ...(dateFilter ? { date: dateFilter } : {}),
+        ...(searchFilter ? { OR: searchFilter } : {}),
+      },
       include: { categorie: true },
       orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
       take: 100,
     });
+  }
+
+  listPublications(query: QueryDocumentsDto) {
+    const dateFilter = this.dateFilter(query.dateFrom, query.dateTo);
+    const searchFilter = query.search ? [
+      { titre: { contains: query.search, mode: 'insensitive' as const } },
+      { reference: { contains: query.search, mode: 'insensitive' as const } },
+      { contenuTexte: { contains: query.search, mode: 'insensitive' as const } },
+    ] : undefined;
+    return this.prisma.documentAdministratif.findMany({
+      where: {
+        type: { in: ['ARRETE', 'COURRIER'] },
+        ...(dateFilter ? { date: dateFilter } : {}),
+        ...(searchFilter ? { OR: searchFilter } : {}),
+      },
+      include: { categorie: true, _count: { select: { chunks: true } } },
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      take: 100,
+    });
+  }
+
+  private dateFilter(dateFrom?: string, dateTo?: string) {
+    if (!dateFrom && !dateTo) return undefined;
+    return {
+      ...(dateFrom ? { gte: new Date(`${dateFrom}T00:00:00.000Z`) } : {}),
+      ...(dateTo ? { lt: new Date(new Date(`${dateTo}T00:00:00.000Z`).getTime() + 24 * 60 * 60 * 1000) } : {}),
+    };
   }
 
   update(id: string, data: UpdateDocumentDto) {
@@ -139,26 +167,41 @@ export class DocumentsService {
     }
 
     const chunks = this.chunker.decouper(document.contenuTexte);
+    if (!chunks.length) throw new NotFoundException('Le document ne contient pas de texte indexable');
     await this.prisma.documentAdministratif.update({ where: { id }, data: { etapeTraitement: 'CHUNKING' } });
-    try { await this.qdrant.supprimerDocument(id); } catch { }
-    await this.prisma.chunk.deleteMany({ where: { documentId: id } });
-    const savedChunks = await this.prisma.chunk.createManyAndReturn({
-      data: chunks.map((chunk) => ({ documentId: id, contenu: chunk.contenu, position: chunk.position })),
-    });
-    for (const chunk of chunks) {
-      const saved = savedChunks[chunk.position];
-      try {
+    try {
+      const savedChunks = await this.prisma.$transaction(async (transaction) => {
+        await transaction.chunk.deleteMany({ where: { documentId: id } });
+        return transaction.chunk.createManyAndReturn({
+          data: chunks.map((chunk) => ({ documentId: id, contenu: chunk.contenu, position: chunk.position })),
+        });
+      });
+      const savedChunksByPosition = new Map(savedChunks.map((chunk) => [chunk.position, chunk]));
+      const points: Array<{ id: string; vector: number[]; payload: object }> = [];
+      for (const chunk of chunks) {
+        const saved = savedChunksByPosition.get(chunk.position);
+        if (!saved) throw new Error(`Le chunk ${chunk.position} n’a pas été enregistré`);
         await this.prisma.documentAdministratif.update({ where: { id }, data: { etapeTraitement: 'EMBEDDING' } });
         const vector = await this.ai.vectoriser(chunk.contenu);
-        await this.prisma.documentAdministratif.update({ where: { id }, data: { etapeTraitement: 'INDEXATION' } });
-        await this.qdrant.indexer([{ id: saved.id, vector, payload: { documentId: id, contenu: chunk.contenu, position: chunk.position } }]);
-      } catch { }
+        points.push({ id: saved.id, vector, payload: { documentId: id, titre: document.titre, contenu: chunk.contenu, position: chunk.position } });
+      }
+      await this.prisma.documentAdministratif.update({ where: { id }, data: { etapeTraitement: 'INDEXATION' } });
+      await this.qdrant.supprimerDocument(id);
+      await this.qdrant.indexer(points);
+      return this.prisma.documentAdministratif.update({
+        where: { id },
+        data: { statut: 'VALIDE', erreurTraitement: null },
+        include: { chunks: { orderBy: { position: 'asc' } } },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erreur de traitement';
+      this.logger.error(`Échec de l’indexation du document ${id}: ${message}`);
+      await this.prisma.documentAdministratif.update({
+        where: { id },
+        data: { statut: 'ERREUR', erreurTraitement: message },
+      });
+      throw error;
     }
-    return this.prisma.documentAdministratif.update({
-      where: { id },
-      data: { statut: 'VALIDE' },
-      include: { chunks: { orderBy: { position: 'asc' } } },
-    });
   }
 
   async supprimer(id: string) {

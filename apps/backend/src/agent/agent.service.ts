@@ -139,7 +139,18 @@ export class AgentService {
     return { total, pending, approved, rejected, totalUsers, citizens, administrators, activeUsers, monthlySeries };
   }
 
-  async approveRequest(requestId: string, changedById: string, notes?: string) {
+  async approveRequest(
+    requestId: string,
+    changedById: string,
+    notes?: string,
+    certificateAdministration?: {
+      certificateNumber: string;
+      reference: string;
+      fee: string;
+      receiptNumber: string;
+      issueLocation: string;
+    },
+  ) {
     const request = await this.prisma.serviceRequest.findUnique({
       where: { id: requestId },
     });
@@ -159,11 +170,42 @@ export class AgentService {
     if (completeness.missingFields.length || completeness.invalidFields.length || completeness.missingAttachments.length) {
       throw new BadRequestException(`Le dossier ne peut pas être validé : ${[...completeness.missingFields, ...completeness.invalidFields, ...completeness.missingAttachments].join(', ')}`);
     }
+    if (request.type === RequestType.RESIDENCE_CERTIFICATE) {
+      if (!certificateAdministration) {
+        throw new BadRequestException('Renseignez le numéro du certificat, la référence FKT/RES, les droits, la quittance et le lieu de délivrance.');
+      }
+      const requiredDetails = [
+        certificateAdministration.certificateNumber,
+        certificateAdministration.reference,
+        certificateAdministration.fee,
+        certificateAdministration.receiptNumber,
+        certificateAdministration.issueLocation,
+      ];
+      if (requiredDetails.some((value) => typeof value !== 'string' || !value.trim())) {
+        throw new BadRequestException('Renseignez le numéro du certificat, la référence FKT/RES, les droits, la quittance et le lieu de délivrance.');
+      }
+      if (!/^\d+(?:[.,]\d{1,2})?$/.test(certificateAdministration.fee.trim())) {
+        throw new BadRequestException('Le montant des droits doit être un nombre valide.');
+      }
+    }
 
     const updated = await this.prisma.serviceRequest.update({
       where: { id: requestId },
       data: {
         status: 'APPROVED',
+        ...(request.type === RequestType.RESIDENCE_CERTIFICATE ? {
+          formData: {
+            ...formData,
+            certificateAdministration: {
+              certificateNumber: certificateAdministration.certificateNumber.trim(),
+              reference: certificateAdministration.reference.trim(),
+              fee: certificateAdministration.fee.trim(),
+              receiptNumber: certificateAdministration.receiptNumber.trim(),
+              issueLocation: certificateAdministration.issueLocation.trim(),
+              issuedAt: new Date().toISOString(),
+            },
+          } as Prisma.InputJsonValue,
+        } : {}),
         updatedAt: new Date(),
         history: { create: { status: 'APPROVED', comment: notes ?? 'Dossier validé et document prêt à être délivré', changedById } },
       },

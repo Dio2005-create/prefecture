@@ -11,7 +11,7 @@ function Result({ hit, number }: { hit: SearchHit; number: number; }) {
 	return <article className="result-card">
 		<span className="result-number">{String(number).padStart(2, '0')}</span>
 		<div>
-			<div className="result-meta"><span>{t('Donnée de votre compte')}</span><strong>{t('Pertinence {{score}} %', { score: Math.round(hit.score * 100) })}</strong></div>
+			<div className="result-meta"><span>{hit.titre ?? t('Document officiel')}</span><strong>{t('Pertinence {{score}} %', { score: Math.round(hit.score * 100) })}</strong></div>
 			<p>{hit.contenu}</p>
 		</div>
 	</article>;
@@ -29,16 +29,16 @@ export function SearchPage() {
 
 	return <>
 		<PageIntro
-			eyebrow={t('Recherche privée')}
-			title={t('Rechercher dans vos données')}
-			description={t('Les résultats proviennent uniquement des demandes et pièces rattachées au compte connecté.')}
+			eyebrow={t('Recherche documentaire')}
+			title={t('Rechercher dans les documents')}
+			description={t('Retrouvez les arrêtés, communiqués et archives indexés par le traitement documentaire.')}
 		/>
 		<form className="hero-search" onSubmit={search}>
 			<Search size={21} />
 			<input
 				value={query}
 				onChange={(event) => setQuery(event.target.value)}
-				placeholder={t('Quel document de mes demandes contient ce mot ?')}
+				placeholder={t('Rechercher un mot ou un sujet dans les documents')}
 				aria-label={t('Votre recherche')}
 			/>
 			<button className="button primary search-submit" type="submit" disabled={!query.trim() || mutation.isPending}>
@@ -54,7 +54,7 @@ export function SearchPage() {
 			</div>
 			{mutation.data.length === 0
 				? <p>{t('Aucun résultat trouvé. Essayez d’autres mots-clés.')}</p>
-				: mutation.data.map((hit, index) => <Result key={hit.documentId} hit={hit} number={index + 1} />)}
+				: mutation.data.map((hit, index) => <Result key={hit.chunkId} hit={hit} number={index + 1} />)}
 		</section>}
 	</>;
 }

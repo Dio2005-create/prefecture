@@ -616,8 +616,8 @@ export function RequestPage() {
         {isLoading ? <p>{t('Chargement...')}</p> : (
           <div style={{ display: 'grid', gap: 10 }}>
             {requests.length === 0 ? <p>{t('Aucune demande pour le moment.')}</p> : visibleRequests.map((request) => (
-              <div key={request.id} style={{ border: '1px solid #dfe7ef', borderRadius: 12, padding: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+              <article className="citizen-request-card" key={request.id}>
+                <div className="citizen-request-card-heading">
                   <strong>{request.title ?? request.type}</strong>
                   <span className={`status ${statusClassNames[request.status] ?? 'en_traitement'}`}>
                     {t(formatStatus(request.status))}
@@ -631,16 +631,16 @@ export function RequestPage() {
                   <button className="button muted small" type="button" onClick={() => setExpandedRequestId(expandedRequestId === request.id ? null : request.id)}><Eye size={14} />{t(expandedRequestId === request.id ? 'Masquer le dossier' : 'Vérifier le dossier')}</button>
                   {citizenCanEdit(request.status) && <button className="button small" type="button" onClick={() => beginEditingRequest(request)}><Pencil size={14} />{t('Modifier')}</button>}
                 </div>
-                {expandedRequestId === request.id && <div className="request-form-section" style={{ marginTop: 12 }}>
+                {expandedRequestId === request.id && <div className="request-form-section citizen-request-details">
                   <h3>{t('Informations déclarées')}</h3>
-                  {request.formData && Object.keys(request.formData).length > 0 ? <div style={{ display: 'grid', gap: 6 }}>
-                    {Object.entries(request.formData).map(([key, value]) => <small key={key}><strong>{t(displayRequirements?.fields.find((field) => field.name === key)?.label ?? key)} :</strong> {renderValue(value)}</small>)}
+                  {request.formData && Object.keys(request.formData).length > 0 ? <div className="citizen-request-fields">
+                    {Object.entries(request.formData).map(([key, value]) => <div className="citizen-request-field" key={key}><strong>{t(displayRequirements?.fields.find((field) => field.name === key)?.label ?? key)}</strong><span>{renderValue(value)}</span></div>)}
                   </div> : <small>{t('Aucune information de formulaire.')}</small>}
-                  {request.description && <p><strong>{t('Description complémentaire')} :</strong> {request.description}</p>}
+                  {request.description && <p className="citizen-request-description"><strong>{t('Description complémentaire')} :</strong> {request.description}</p>}
                   <h3>{t('Pièces justificatives')}</h3>
-                  {request.attachments?.length ? request.attachments.map((attachment) => <button key={attachment.id} className="button muted small" type="button" onClick={() => void downloadRequestAttachment(request.id, attachment.id, attachment.originalName)}><Download size={14} />{t(attachment.label ?? 'Pièce complémentaire')} — {attachment.originalName}</button>) : <small>{t('Aucune pièce jointe pour le moment.')}</small>}
+                  {request.attachments?.length ? <div className="citizen-request-attachments">{request.attachments.map((attachment) => <button key={attachment.id} className="button muted small" type="button" onClick={() => void downloadRequestAttachment(request.id, attachment.id, attachment.originalName)}><Download size={14} />{t(attachment.label ?? 'Pièce complémentaire')} — {attachment.originalName}</button>)}</div> : <small>{t('Aucune pièce jointe pour le moment.')}</small>}
                 </div>}
-              </div>
+              </article>
             ))}
             <Pagination page={requestPage} totalPages={Math.max(1, Math.ceil(requests.length / 5))} onChange={setRequestPage} />
           </div>

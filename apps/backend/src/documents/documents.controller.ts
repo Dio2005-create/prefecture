@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Logger, Param, ParseUUIDPipe, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
@@ -12,6 +12,8 @@ import { RolesGuard } from '../auth/roles.guard';
 @UseGuards(AuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class DocumentsController {
+  private readonly logger = new Logger(DocumentsController.name);
+
   constructor(private readonly documentsService: DocumentsService) {}
 
   @Post()
@@ -34,7 +36,11 @@ export class DocumentsController {
       titre: data.titre ?? file.originalname,
     });
     await this.documentsService.demarrerTraitement(document.id);
-    void this.documentsService.traiter(document.id, file.path, file.originalname, data.type).catch(() => undefined);
+    void this.documentsService.traiter(document.id, file.path, file.originalname, data.type).catch((error: unknown) => {
+      this.logger.error(
+        `Le traitement en arrière-plan du document ${document.id} a échoué: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
     return document;
   }
 
@@ -45,8 +51,14 @@ export class DocumentsController {
 
   @Get('public')
   @Roles('CITIZEN', 'ADMIN')
-  publicDocuments() {
-    return this.documentsService.listPublic();
+  publicDocuments(@Query() query: QueryDocumentsDto) {
+    return this.documentsService.listPublic(query);
+  }
+
+  @Get('publications')
+  @Roles('ADMIN')
+  publications(@Query() query: QueryDocumentsDto) {
+    return this.documentsService.listPublications(query);
   }
 
   @Patch(':id')

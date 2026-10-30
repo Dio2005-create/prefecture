@@ -122,7 +122,7 @@ export class AuthService {
     return { token, expiresIn: SESSION_DURATION, user: this.toUserPayload(userWithRoles) };
   }
 
-  async login(identifier: string, password: string) {
+  async login(identifier: string, password: string, portal: 'citizen' | 'admin' = 'citizen') {
     const cleanIdentifier = identifier.trim();
     const cleanPassword = password.trim();
     if (!cleanIdentifier || !cleanPassword) throw new UnauthorizedException('Identifiant et mot de passe requis');
@@ -135,10 +135,19 @@ export class AuthService {
           { cin: { equals: cleanIdentifier, mode: 'insensitive' as const } },
         ],
       },
+      include: { roles: { include: { role: true } } },
     });
 
     if (!user || !user.passwordHash) throw new UnauthorizedException('Identifiants invalides');
     if (!(await this.verifyPassword(cleanPassword, user.passwordHash))) throw new UnauthorizedException('Identifiants invalides');
+    const isAdmin = user.role === 'ADMIN' ||
+      user.roles.some(({ role }) => role.name === 'ADMIN' || role.name === 'SUPERADMIN');
+    if (portal === 'admin' && !isAdmin) {
+      throw new UnauthorizedException('Vérifiez vos informations de connexion.');
+    }
+    if (portal === 'citizen' && isAdmin) {
+      throw new UnauthorizedException('Vérifiez vos informations de connexion.');
+    }
     if (user.status === 'DISABLED') {
       throw new UnauthorizedException('Votre compte a été désactivé. Vous pouvez demander sa réactivation.');
     }

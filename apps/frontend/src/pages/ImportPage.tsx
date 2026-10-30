@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useSearchParams } from 'react-router-dom';
 import { UploadCloud } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { documentService } from '../services/api';
@@ -11,7 +11,9 @@ const types: DocumentType[] = ['ACTE', 'ARRETE', 'COURRIER', 'AUTRE'];
 export function ImportPage() {
   const { t } = usePreferences();
   const [file, setFile] = useState<File>();
-  const [type, setType] = useState<DocumentType>('ARRETE');
+  const [searchParams] = useSearchParams();
+  const initialType = searchParams.get('type');
+  const [type, setType] = useState<DocumentType>(types.includes(initialType as DocumentType) ? initialType as DocumentType : 'ARRETE');
   const nav = useNavigate();
   const client = useQueryClient();
   const upload = useMutation({ mutationFn: () => documentService.upload(file!, { type }), onSuccess: async (doc) => { await client.invalidateQueries({ queryKey: ['documents'] }); await client.invalidateQueries({ queryKey: ['document', doc.id] }); nav(`/back/documents/${doc.id}`); } });

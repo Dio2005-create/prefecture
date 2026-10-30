@@ -25,6 +25,8 @@ export class QdrantService {
   }
 
   async rechercher(vector: number[], topK: number): Promise<SearchHit[]> {
+    const collectionResponse = await this.collectionStatus();
+    if (collectionResponse === 404) return [];
     const response = await this.request(`/collections/${this.collection}/points/search`, 'POST', {
       vector,
       limit: topK,
@@ -36,13 +38,26 @@ export class QdrantService {
       documentId: String(result.payload?.documentId ?? ''),
       contenu: String(result.payload?.contenu ?? ''),
       score: result.score,
+      titre: typeof result.payload?.titre === 'string' ? result.payload.titre : undefined,
     }));
   }
 
   async supprimerDocument(documentId: string): Promise<void> {
+    if (await this.collectionStatus() === 404) return;
     await this.request(`/collections/${this.collection}/points/delete`, 'POST', {
       filter: { must: [{ key: 'documentId', match: { value: documentId } }] },
     });
+  }
+
+  private async collectionStatus(): Promise<number> {
+    try {
+      const response = await fetch(`${this.baseUrl}/collections/${this.collection}`);
+      if (response.status === 404) return 404;
+      if (!response.ok) throw new Error(`Qdrant returned ${response.status}`);
+      return response.status;
+    } catch (error) {
+      throw new ServiceUnavailableException('La base vectorielle Qdrant est indisponible', { cause: error });
+    }
   }
 
   private async request(path: string, method: 'POST' | 'PUT', body: object): Promise<Record<string, unknown>> {

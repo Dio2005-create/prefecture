@@ -1,6 +1,23 @@
 import type { AppLanguage } from './preferences';
 
 const malagasy: Record<string, string> = {
+  'Connexion administrateur': 'Fidiran’ny mpandrindra',
+  'Connexion citoyenne': 'Fidiran’ny olom-pirenena',
+  'Cette page est réservée aux comptes administrateurs.': 'Natokana ho an’ny kaontin’ny mpandrindra ity pejy ity.',
+  'Vérifiez vos informations de connexion.': 'Hamarino ny mombamomba ny fidiranao.',
+  'Rechercher dans les documents': 'Hikaroka ao amin’ny antontan-taratasy',
+  'Recherche documentaire': 'Fikarohana antontan-taratasy',
+  'Rechercher un mot ou un sujet dans les documents': 'Hikaroka teny na lohahevitra ao amin’ny antontan-taratasy',
+  'Document officiel': 'Antontan-taratasy ofisialy',
+  'Rechercher par titre, référence ou contenu': 'Hikaroka amin’ny lohateny, laharana na votoaty',
+  'Rechercher par nom ou service': 'Hikaroka amin’ny anarana na sampan-draharaha',
+  'Rechercher dans les textes officiels': 'Hikaroka ao amin’ny lalàna ofisialy',
+  Du: 'Manomboka',
+  Au: 'Mifarana',
+  Effacer: 'Fafana',
+  'Importer une publication': 'Hampiditra famoahana',
+  'Impossible de charger les publications.': 'Tsy afaka maka ny famoahana.',
+  'Consulter les indicateurs et le traitement des documents.': 'Hijery ny tondro sy ny fanodinana antontan-taratasy.',
   'Accueil citoyen': 'Fandraisana',
   'En ligne': 'Mavitrika',
   'Impossible d’enregistrer la langue. Réessayez.': 'Tsy afaka mitahiry ny fiteny. Andramo indray.',

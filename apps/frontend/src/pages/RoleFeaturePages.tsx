@@ -1,9 +1,10 @@
-import { Bell, CalendarDays, FileText, ShieldCheck, Users, Download, Power, Trash2, Eye, X, CircleDollarSign, KeyRound, UserRound, UserPlus, ShieldAlert, ArrowLeft } from 'lucide-react';
+import { Bell, CalendarDays, FileText, ShieldCheck, Users, Download, Power, Trash2, Eye, X, CircleDollarSign, KeyRound, UserRound, UserPlus, ShieldAlert, ArrowLeft, BriefcaseBusiness, Search, UploadCloud } from 'lucide-react';
 import axios from 'axios';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { NavLink } from 'react-router-dom';
 import { adminService, appointmentService, authService, documentService, notificationService, prefectureService, userService } from '../services/api';
-import { Loading, Pagination, Toast, useToast } from '../components/ui';
+import { ErrorState, Loading, PageIntro, Pagination, Status, Toast, useToast } from '../components/ui';
 import { useAuth } from '../auth';
 import { usePreferences } from '../preferences';
 
@@ -12,10 +13,20 @@ export function CitizenDocumentsPage() {
   const { data: requests = [], isLoading } = useQuery({ queryKey: ['citizen-requests'], queryFn: prefectureService.listRequests, refetchInterval: 3000 });
   const [downloadError, setDownloadError] = useState('');
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const approved = requests
     .filter((request: { status: string }) => request.status === 'APPROVED')
     .sort((first, second) => new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime());
-  const visible = approved.slice((page - 1) * 5, page * 5);
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  const filtered = approved.filter((request) => {
+    const requestDate = request.updatedAt.slice(0, 10);
+    const title = `${request.title ?? ''} ${request.service.nameFr} ${request.service.nameMg}`.toLocaleLowerCase();
+    return (!normalizedSearch || title.includes(normalizedSearch)) &&
+      (!dateFrom || requestDate >= dateFrom) && (!dateTo || requestDate <= dateTo);
+  });
+  const visible = filtered.slice((page - 1) * 5, page * 5);
   const download = async (requestId: string) => {
     setDownloadError('');
     try {
@@ -43,10 +54,10 @@ export function CitizenDocumentsPage() {
       }
     }
   };
-  return <section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Espace citoyen')}</p><h1>{t('Mes documents délivrés')}</h1><p>{t('Retrouvez ici les documents validés par la Préfecture d’Ihosy.')}</p>{downloadError && <p className="error-message">{t(downloadError)}</p>}{isLoading ? <p>{t('Chargement...')}</p>   : approved.length === 0 ? <div className="empty-state"><FileText size={28} /><span>{t('Aucun document délivré pour le moment.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{visible.map((request: { id: string; title?: string; type: string; service?: { nameFr: string; nameMg: string } }) => {
+  return <section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Espace citoyen')}</p><h1>{t('Mes documents délivrés')}</h1><p>{t('Retrouvez ici les documents validés par la Préfecture d’Ihosy.')}</p><div className="toolbar"><label className="search-field"><Search size={18} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder={t('Rechercher par nom ou service')} /></label><label className="date-filter">{t('Du')}<input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} /></label><label className="date-filter">{t('Au')}<input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPage(1); }} /></label></div>{downloadError && <p className="error-message">{t(downloadError)}</p>}{isLoading ? <p>{t('Chargement...')}</p> : filtered.length === 0 ? <div className="empty-state"><FileText size={28} /><span>{t('Aucun document délivré pour le moment.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{visible.map((request: { id: string; title?: string; type: string; service?: { nameFr: string; nameMg: string } }) => {
     const isCin = ['CIN_REQUEST', 'CIN_RENEWAL'].includes(request.type);
     return <div className="recent-row" key={request.id}><FileText size={18} /><span><strong>{request.title ?? (language === 'mg' ? request.service?.nameMg : request.service?.nameFr)}</strong><small>{t(isCin ? 'Prise des empreintes requise : prenez rendez-vous pour le retrait au guichet.' : 'PDF administratif disponible')}</small></span>{!isCin && <button className="button small" onClick={() => void download(request.id)}>{t('Télécharger')}</button>}</div>;
-  })}</div>}<Pagination page={page} totalPages={Math.max(1, Math.ceil(approved.length / 5))} onChange={setPage} /></section>;
+  })}</div>}<Pagination page={page} totalPages={Math.max(1, Math.ceil(filtered.length / 5))} onChange={setPage} /></section>;
 }
 
 export function AssociationAndOngPage() {
@@ -78,7 +89,13 @@ export function AssociationAndOngPage() {
 
 export function OfficialInformationPage() {
   const { t, language } = usePreferences();
-  const { data: documents = [], isLoading } = useQuery({ queryKey: ['public-documents'], queryFn: documentService.publicList });
+  const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const { data: documents = [], isLoading } = useQuery({
+    queryKey: ['public-documents', search, dateFrom, dateTo],
+    queryFn: () => documentService.publicList({ search, ...(dateFrom ? { dateFrom } : {}), ...(dateTo ? { dateTo } : {}) }),
+  });
   const download = (documentId: string, title: string, content?: string) => {
     const blob = new Blob([content ?? 'Contenu non disponible.'], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -90,7 +107,7 @@ export function OfficialInformationPage() {
     link.remove();
     URL.revokeObjectURL(url);
   };
-  return <section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Information officielle')}</p><h1>{t('Textes, arrêtés et communiqués')}</h1><p>{t('Consultez les publications validées par la Préfecture.')}</p>{isLoading ? <p>{t('Chargement...')}</p> : documents.length === 0 ? <div className="empty-state"><FileText size={28} /><span>{t('Aucune publication disponible.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{documents.map((document) => <article className="recent-row" key={document.id}><FileText size={18} /><span><strong>{document.titre}</strong><small>{t(document.type)} · {document.date ? new Date(document.date).toLocaleDateString(language === 'mg' ? 'mg-MG' : 'fr-FR') : t('Date non renseignée')}</small></span><button className="button small" onClick={() => download(document.id, document.titre, document.contenuTexte)}><Download size={14} />{t('Télécharger')}</button></article>)}</div>}</section>;
+  return <section className="panel" style={{ padding: 24 }}><p className="eyebrow">{t('Information officielle')}</p><h1>{t('Textes, arrêtés et communiqués')}</h1><p>{t('Consultez les publications validées par la Préfecture.')}</p><div className="toolbar"><label className="search-field"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('Rechercher dans les textes officiels')} /></label><label className="date-filter">{t('Du')}<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label><label className="date-filter">{t('Au')}<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label></div>{isLoading ? <p>{t('Chargement...')}</p> : documents.length === 0 ? <div className="empty-state"><FileText size={28} /><span>{t('Aucune publication disponible.')}</span></div> : <div style={{ display: 'grid', gap: 10 }}>{documents.map((document) => <article className="recent-row" key={document.id}><FileText size={18} /><span><strong>{document.titre}</strong><small>{t(document.type)} · {document.date ? new Date(document.date).toLocaleDateString(language === 'mg' ? 'mg-MG' : 'fr-FR') : t('Date non renseignée')}</small></span><button className="button small" onClick={() => download(document.id, document.titre, document.contenuTexte)}><Download size={14} />{t('Télécharger')}</button></article>)}</div>}</section>;
 }
 
 export function NotificationsPage() {
@@ -370,7 +387,7 @@ export function AdminSettingsPage() {
     <p className="eyebrow">{t('Configuration')}</p>
     <h1>{t('Paramètres')}</h1>
     <p>{t('Choisissez une rubrique pour consulter ou modifier les paramètres de l’administration.')}</p>
-    {!section ? <div className="admin-settings-menu">{settingSections.map(({ id, label, description, Icon }) => <button className="admin-settings-menu-item" type="button" key={id} onClick={() => setSection(id)}><span className="admin-settings-menu-icon"><Icon size={20} /></span><span><strong>{t(label)}</strong><small>{t(description)}</small></span><ArrowLeft className="admin-settings-menu-arrow" size={17} /></button>)}</div> : <>
+    {!section ? <div className="admin-settings-menu">{settingSections.map(({ id, label, description, Icon }) => <button className="admin-settings-menu-item" type="button" key={id} onClick={() => setSection(id)}><span className="admin-settings-menu-icon"><Icon size={20} /></span><span><strong>{t(label)}</strong><small>{t(description)}</small></span><ArrowLeft className="admin-settings-menu-arrow" size={17} /></button>)}<NavLink className="admin-settings-menu-item" to="/back/modeles"><span className="admin-settings-menu-icon"><FileText size={20} /></span><span><strong>{t('Modèles de documents')}</strong><small>{t('Gérer les modèles utilisés pour les démarches administratives.')}</small></span><ArrowLeft className="admin-settings-menu-arrow" size={17} /></NavLink><NavLink className="admin-settings-menu-item" to="/back/cachets"><span className="admin-settings-menu-icon"><ShieldCheck size={20} /></span><span><strong>{t('Cachets & signatures')}</strong><small>{t('Gérer les cachets et les signatures officiels.')}</small></span><ArrowLeft className="admin-settings-menu-arrow" size={17} /></NavLink><NavLink className="admin-settings-menu-item" to="/back/pilotage"><span className="admin-settings-menu-icon"><BriefcaseBusiness size={20} /></span><span><strong>{t('KPI et pilotage')}</strong><small>{t('Consulter les indicateurs et le traitement des documents.')}</small></span><ArrowLeft className="admin-settings-menu-arrow" size={17} /></NavLink></div> : <>
       <button className="button admin-settings-back" type="button" onClick={() => setSection(null)}><ArrowLeft size={16} />{t('Tous les paramètres')}</button>
       <div className="admin-settings-detail">
       <h2 className="admin-settings-section-title">{t(sectionTitles[section])}</h2>
@@ -587,31 +604,42 @@ export function AdminAssociationPage() {
 
 export function AdminPublicationsPage() {
   const { t, language } = usePreferences();
-  const [selected, setSelected] = useState<{ title: string; date: string } | null>(null);
-  const arrêtes = [
-    { title: 'Arrêté n° 2026-041 – Autorisations d’événements', date: '14 sept. 2026' },
-    { title: 'Communiqué – Mise à jour des procédures de dépôt', date: '09 sept. 2026' },
-    { title: 'Instruction – Contrôle de légalité des actes', date: '03 sept. 2026' },
-  ];
+  const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const { data: documents = [], isLoading, isError } = useQuery({
+    queryKey: ['admin-publications', search, dateFrom, dateTo],
+    queryFn: () => documentService.publications({ search, ...(dateFrom ? { dateFrom } : {}), ...(dateTo ? { dateTo } : {}) }),
+  });
 
-  return <section className="panel" style={{ padding: 24 }}>
-    <p className="eyebrow">{t('Publications')}</p>
-    <h1>{t('Arrêtés, communiqués et textes officiels')}</h1>
-    <p>{t('Publication et traçabilité des arrêtés, directives et informations officielles.')}</p>
+  return <>
+    <PageIntro
+      eyebrow={t('Publications')}
+      title={t('Arrêtés, communiqués et textes officiels')}
+      description={t('Publication et traçabilité des arrêtés, directives et informations officielles.')}
+      action={<NavLink className="button primary" to="/back/documents/import?type=ARRETE"><UploadCloud size={17} />{t('Importer')}</NavLink>}
+    />
+    <section className="panel" style={{ padding: 24 }}>
+    <div className="toolbar">
+      <label className="search-field"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('Rechercher par titre, référence ou contenu')} /></label>
+      <label className="date-filter">{t('Du')}<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
+      <label className="date-filter">{t('Au')}<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
+    </div>
     <div style={{ display: 'grid', gap: 12, marginTop: 18 }}>
-      {arrêtes.map((item) => (
-        <article className="recent-row" key={item.title}>
+      {isLoading ? <Loading /> : isError ? <ErrorState message={t('Impossible de charger les publications.')} /> : documents.length === 0 ? <p className="muted">{t('Aucune publication disponible.')}</p> : documents.map((item) => (
+        <article className="recent-row" key={item.id}>
           <FileText size={18} />
           <span>
-            <strong>{item.title}</strong>
-            <small>{item.date}</small>
+            <strong>{item.titre}</strong>
+            <small>{t(item.type)} · {item.date ? new Date(item.date).toLocaleDateString(language === 'mg' ? 'mg-MG' : 'fr-FR') : t('Date non renseignée')}</small>
           </span>
-          <button className="button small" onClick={() => setSelected(item)}>{t('Consulter')}</button>
+          <Status status={item.statut} />
+          <NavLink className="button small" to={`/back/documents/${item.id}`}>{t('Consulter')}</NavLink>
         </article>
       ))}
     </div>
-    {selected && <div className="modal-backdrop" role="presentation"><section className="confirm-modal publication-modal" role="dialog" aria-modal="true" aria-labelledby="publication-title"><button className="icon-button modal-close" onClick={() => setSelected(null)} aria-label={t('Fermer')}><X size={17} /></button><p className="eyebrow">{t('Publication officielle')}</p><h2 id="publication-title">{t(selected.title)}</h2><p className="publication-date">{t('Publié le')} {selected.date}</p><div className="publication-preview"><FileText size={32} /><p>{t('Ce communiqué est disponible dans le fonds officiel de la Préfecture. Consultez son contenu avant de le télécharger ou de le transmettre.')}</p><button className="button primary" onClick={() => setSelected(null)}>{t('Fermer la consultation')}</button></div></section></div>}
-  </section>;
+    </section>
+  </>;
 }
 
 export function AdminAppointmentsPage() {

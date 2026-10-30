@@ -332,7 +332,7 @@ export class AppointmentsService {
     const dayStart = new Date(`${localDate}T00:00:00+03:00`);
     const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${localDate}))`;
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${localDate}))::text`;
     const dailyCount = await tx.appointment.count({
       where: { startsAt: { gte: dayStart, lt: dayEnd }, ticketReference: { not: null } },
     });

@@ -6,7 +6,7 @@ import { useAuth } from '../auth';
 import { usePreferences } from '../preferences';
 import { authService } from '../services/api';
 
-export function LoginPage() {
+export function LoginPage({ adminPortal = false }: { adminPortal?: boolean }) {
   const [flow, setFlow] = useState<'login' | 'register' | 'forgot-identifier' | 'forgot-code' | 'forgot-complete' | 'temporary-password-change'>('login');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -108,7 +108,7 @@ export function LoginPage() {
     try {
       const user = isRegistering
         ? await register({ email: identifier, password, nom, phone: phone || undefined, cin: isAdult ? cin : undefined, isAdult: isAdult === true })
-        : await login(identifier, password);
+        : await login(identifier, password, adminPortal);
       if (user) {
         if (user.mustChangePassword) {
           setFlow('temporary-password-change');
@@ -117,7 +117,7 @@ export function LoginPage() {
           setInfo(t('Votre mot de passe temporaire a été accepté. Choisissez maintenant un nouveau mot de passe.'));
           return;
         }
-        const defaultPath = user.roles.includes('CITIZEN') ? '/front/accueil' : '/back/accueil';
+        const defaultPath = adminPortal ? '/back/accueil' : '/front/accueil';
         navigate(defaultPath, { replace: true });
         return;
       }
@@ -211,9 +211,9 @@ export function LoginPage() {
         <div className="login-visual-inner">
           <img src="/logoPrefet.png" alt={t('Logo de la préfecture')} className="login-logo" />
           <p className="eyebrow">{t('E-Servisy d’Ihosy')}</p>
-          <h2 key={isRegistering ? 'register-heading' : 'login-heading'} className="login-panel-message">{t(isRegistering ? 'Créer un compte citoyen' : 'Un guichet unique pour l’administration.')}</h2>
+          <h2 key={isRegistering ? 'register-heading' : 'login-heading'} className="login-panel-message">{t(isRegistering ? 'Créer un compte citoyen' : adminPortal ? 'Connexion administrateur' : 'Un guichet unique pour l’administration.')}</h2>
           <p key={isRegistering ? 'register-copy' : 'login-copy'} className="login-visual-copy">
-            {t(isRegistering ? 'Créez votre espace pour suivre vos démarches.' : 'Suivez vos demandes, consultez les services et accédez à votre espace personnel en quelques clics.')}
+            {t(isRegistering ? 'Créez votre espace pour suivre vos démarches.' : adminPortal ? 'Accédez à votre espace sécurisé de gestion.' : 'Suivez vos demandes, consultez les services et accédez à votre espace personnel en quelques clics.')}
           </p>
           <ul className="login-features">
             <li>{t('Citoyens')}</li>
@@ -231,9 +231,9 @@ export function LoginPage() {
           onPointerLeave={resetCardTilt}
         >
           <div className="login-panel-content">
-          <p className="eyebrow login-eyebrow">{t(isRegistering ? 'Inscription citoyenne' : isForgotFlow || flow === 'temporary-password-change' ? 'Récupération du mot de passe' : 'Connexion')}</p>
+          <p className="eyebrow login-eyebrow">{t(isRegistering ? 'Inscription citoyenne' : isForgotFlow || flow === 'temporary-password-change' ? 'Récupération du mot de passe' : adminPortal ? 'Espace administrateur' : 'Connexion citoyenne')}</p>
           <h1>{t(isRegistering ? 'Créer un compte' : flow === 'temporary-password-change' ? 'Choisir un nouveau mot de passe' : isForgotFlow ? 'Mot de passe oublié' : 'Bienvenue')}</h1>
-          <p className="login-subtitle">{t(isRegistering ? 'Créez votre espace pour suivre vos démarches.' : flow === 'temporary-password-change' ? 'Pour protéger votre compte, le mot de passe temporaire ne peut pas être réutilisé. Définissez votre mot de passe personnel.' : isForgotFlow ? 'Choisissez une méthode pour récupérer votre compte.' : 'Accédez à votre espace citoyen ou administrateur.')}</p>
+          <p className="login-subtitle">{t(isRegistering ? 'Créez votre espace pour suivre vos démarches.' : flow === 'temporary-password-change' ? 'Pour protéger votre compte, le mot de passe temporaire ne peut pas être réutilisé. Définissez votre mot de passe personnel.' : isForgotFlow ? 'Choisissez une méthode pour récupérer votre compte.' : adminPortal ? 'Cette page est réservée aux comptes administrateurs.' : 'Accédez à votre espace citoyen.')}</p>
 
           {flow !== 'forgot-complete' && <form key={isRegistering ? 'register-form' : flow} className="login-flow-form" onSubmit={submit}>
             {flow === 'login' || isRegistering ? <label className="login-floating-field">
@@ -369,7 +369,9 @@ export function LoginPage() {
           {flow === 'forgot-code' && <button className="text-link auth-switch" type="button" onClick={() => { setError(''); setInfo(''); setFlow('forgot-identifier'); }}>{t('Renvoyer un code OTP')}</button>}
           {flow === 'temporary-password-change' ? null : isForgotFlow
             ? <button className="text-link auth-switch" type="button" onClick={() => changeFlow('login')}>{t('Retour à la connexion')}</button>
-            : <button key={isRegistering ? 'login-switch' : 'register-switch'} className="text-link auth-switch login-auth-switch" type="button" aria-label={t(isRegistering ? 'Se connecter' : 'S’inscrire')} onClick={switchAuthMode}>{t(isRegistering ? 'J’ai déjà un compte' : 'Créer un compte citoyen')}</button>}
+            : adminPortal
+              ? null
+              : <button key={isRegistering ? 'login-switch' : 'register-switch'} className="text-link auth-switch login-auth-switch" type="button" aria-label={t(isRegistering ? 'Se connecter' : 'S’inscrire')} onClick={switchAuthMode}>{t(isRegistering ? 'J’ai déjà un compte' : 'Créer un compte citoyen')}</button>}
           </div>
         </div>
       </section>

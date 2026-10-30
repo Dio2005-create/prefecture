@@ -178,6 +178,7 @@ export interface SearchHit {
   documentId: string;
   contenu: string;
   score: number;
+  titre?: string;
 }
 
 export interface RagResponse {

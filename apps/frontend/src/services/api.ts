@@ -2,18 +2,30 @@ import axios from 'axios';
 import type { ChatConversation, CitizenComplaint, CitizenRequest, Document, FirearmPermitRecord, FirearmRecord, FirearmRequestRecord, FirearmRequestType, NotificationItem, PaginatedDocuments, PrefectureService, RagResponse, RequestRequirements, SearchHit, RequestType } from '../types';
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:3000' });
+export function getSessionKeys(pathname = window.location.pathname) {
+  const adminPortal = pathname.startsWith('/back') || pathname === '/login/admin';
+  return adminPortal
+    ? { session: 'archives-session-admin', activity: 'archives-last-activity-admin' }
+    : { session: 'archives-session-citizen', activity: 'archives-last-activity-citizen' };
+}
+
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('archives-session');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (!config.headers.Authorization) {
+    const token = localStorage.getItem(getSessionKeys().session);
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 api.interceptors.response.use((response) => response, (error: unknown) => {
   if (axios.isAxiosError(error) && !error.response && error.code !== 'ERR_CANCELED') {
     window.dispatchEvent(new Event('archives:connection-error'));
   }
-  if (axios.isAxiosError(error) && error.response?.status === 401 && localStorage.getItem('archives-session')) {
-    localStorage.removeItem('archives-session');
-    localStorage.removeItem('archives-last-activity');
+  const isLoginRequest = axios.isAxiosError(error) &&
+    (error.config?.url === '/auth/login' || error.config?.url === '/auth/admin-login');
+  if (axios.isAxiosError(error) && error.response?.status === 401 && !isLoginRequest) {
+    const keys = getSessionKeys();
+    localStorage.removeItem(keys.session);
+    localStorage.removeItem(keys.activity);
     window.dispatchEvent(new Event('archives:session-expired'));
   }
   return Promise.reject(error);
@@ -21,7 +33,8 @@ api.interceptors.response.use((response) => response, (error: unknown) => {
 export const authService = {
   register: async (payload: { email?: string; password: string; phone?: string; cin?: string; nom?: string; isAdult: boolean }) =>
     (await api.post<{ token: string; user?: unknown }>('/auth/register', payload)).data,
-  login: async (identifier: string, password: string) => (await api.post<{ token: string; user?: unknown }>('/auth/login', { identifier, password })).data,
+  login: async (identifier: string, password: string, adminPortal = false) =>
+    (await api.post<{ token: string; user?: unknown }>(adminPortal ? '/auth/admin-login' : '/auth/login', { identifier, password })).data,
   requestReactivation: async (payload: { identifier: string; password: string; reason?: string }) =>
     (await api.post<{ success: boolean; message: string }>('/auth/request-reactivation', payload)).data,
   requestPasswordReset: async (identifier: string, channel: 'EMAIL' | 'SMS' | 'CIN') =>
@@ -208,8 +221,18 @@ export const adminService = {
   listRequests: async (status?: string) =>
     (await api.get<CitizenRequest[]>('/admin/requests', { params: status ? { status } : undefined })).data,
   hideRequest: async (id: string) => (await api.delete(`/admin/requests/${id}/view`)).data,
-  approveRequest: async (id: string, notes?: string) =>
-    (await api.post<CitizenRequest>(`/admin/requests/${id}/approve`, { notes })).data,
+  approveRequest: async (
+    id: string,
+    notes?: string,
+    certificateAdministration?: {
+      certificateNumber: string;
+      reference: string;
+      fee: string;
+      receiptNumber: string;
+      issueLocation: string;
+    },
+  ) =>
+    (await api.post<CitizenRequest>(`/admin/requests/${id}/approve`, { notes, ...(certificateAdministration ? { certificateAdministration } : {}) })).data,
   assignCinAppointment: async (requestId: string, slotId: string) =>
     (await api.post('/appointments/admin/requests/' + requestId + '/cin-appointment', { slotId })).data,
   rejectRequest: async (id: string, reason: string) =>
@@ -270,7 +293,10 @@ export const documentService = {
   },
   index: async (id: string) => (await api.post<Document>(`/documents/${id}/index`)).data,
   remove: async (id: string) => api.delete(`/documents/${id}`),
-  publicList: async () => (await api.get<Document[]>('/documents/public')).data,
+  publicList: async (params: Record<string, string | undefined> = {}) =>
+    (await api.get<Document[]>('/documents/public', { params })).data,
+  publications: async (params: Record<string, string | undefined> = {}) =>
+    (await api.get<Document[]>('/documents/publications', { params })).data,
 };
 
 export const searchService = {

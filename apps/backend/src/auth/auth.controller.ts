@@ -24,6 +24,11 @@ export class AuthController {
     return this.auth.login(body.identifier ?? '', body.password ?? '');
   }
 
+  @Post('admin-login')
+  adminLogin(@Body() body: { identifier?: string; password?: string }) {
+    return this.auth.login(body.identifier ?? '', body.password ?? '', 'admin');
+  }
+
   @Post('request-reactivation')
   requestReactivation(@Body() body: { identifier?: string; password?: string; reason?: string }) {
     return this.auth.requestReactivation(body.identifier ?? '', body.password ?? '', body.reason);
