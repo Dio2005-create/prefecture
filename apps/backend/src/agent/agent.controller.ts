@@ -168,10 +168,7 @@ export class AgentController {
     @Body() body?: {
       notes?: string;
       certificateAdministration?: {
-        certificateNumber: string;
         reference: string;
-        fee: string;
-        receiptNumber: string;
         issueLocation: string;
       };
     },

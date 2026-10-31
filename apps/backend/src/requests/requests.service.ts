@@ -685,27 +685,27 @@ export class RequestsService {
         const issueLocation = fill(admin('issueLocation') || 'IHOSY');
 
         document.rect(boxX, boxY, boxWidth, halfHeight).lineWidth(1).strokeColor('#343434').stroke();
-        document.font('Courier-Bold').fontSize(8).text("MINISTERE DE L'INTERIEUR", margin, 43, { width: contentWidth * 0.55 });
-        document.font('Courier-Bold').fontSize(8).text('PREFECTURE DE POLICE D’IHOSY', margin, 55, { width: contentWidth * 0.55 });
-        document.font('Courier-Bold').fontSize(7.5).text('DISTRICT D’IHOSY', margin, 67, { width: contentWidth * 0.55 });
-        document.font('Courier-Bold').fontSize(7.5).text(`FOKONTANY : ${fokontany.toUpperCase()}`, margin, 79, { width: contentWidth * 0.55 });
-        document.font('Courier-Bold').fontSize(9).text('FANAMARINAM-PONENANA', pageWidth - margin - 170, 48, { width: 170, align: 'right' });
-        document.font('Courier-Bold').fontSize(8.5).text('CERTIFICAT DE RESIDENCE', pageWidth - margin - 170, 64, { width: 170, align: 'right', underline: true });
-        document.font('Courier-Bold').fontSize(8).text(`N° ${fill(admin('certificateNumber'))} / MINTER / DIST. IHOSY / FKT. ${fill(admin('reference'))}`, margin, 105, { width: contentWidth });
+        document.font('Times-Bold').fontSize(8).text("MINISTERE DE L'INTERIEUR", margin, 43, { width: contentWidth * 0.55 });
+        document.font('Times-Bold').fontSize(8).text('PREFECTURE DE POLICE D’IHOSY', margin, 55, { width: contentWidth * 0.55 });
+        document.font('Times-Bold').fontSize(7.5).text('DISTRICT D’IHOSY', margin, 67, { width: contentWidth * 0.55 });
+        document.font('Times-Bold').fontSize(7.5).text(`FOKONTANY : ${fokontany.toUpperCase()}`, margin, 79, { width: contentWidth * 0.55 });
+        document.font('Times-Bold').fontSize(9).text('FANAMARINAM-PONENANA', pageWidth - margin - 170, 48, { width: 170, align: 'right' });
+        document.font('Times-Bold').fontSize(8.5).text('CERTIFICAT DE RESIDENCE', pageWidth - margin - 170, 64, { width: 170, align: 'right', underline: true });
+        document.font('Times-Bold').fontSize(8).text(`N° ${fill(admin('certificateNumber'))} / MINTER / DIST. IHOSY / FKT. ${fill(admin('reference'))}`, margin, 105, { width: contentWidth });
 
-        document.font('Courier').fontSize(8.5).text(
+        document.font('Times-Roman').fontSize(8.5).text(
           `Ny sefom-pokontany eto ${fokontany} dia manamarina fa :`, margin, 126, { width: contentWidth, align: 'center' },
         );
-        document.font('Courier-Oblique').fontSize(7.5).text('Le Chef Fokontany certifie que :', margin, 139, { width: contentWidth, align: 'center' });
+        document.font('Times-Italic').fontSize(7.5).text('Le Chef Fokontany certifie que :', margin, 139, { width: contentWidth, align: 'center' });
 
         const bilingualField = (y: number, leftMg: string, leftFr: string, leftValue: string, rightMg = '', rightFr = '', rightValue = '', rightX = 310) => {
-          document.font('Courier-Bold').fontSize(8).text(leftMg, margin, y);
-          document.font('Courier-Oblique').fontSize(7).text(leftFr, margin, y + 9);
-          document.font('Courier-Bold').fontSize(8.5).text(leftValue.toUpperCase(), margin + 112, y + 1, { width: rightX - margin - 112 });
+          document.font('Times-Bold').fontSize(8).text(leftMg, margin, y);
+          document.font('Times-Italic').fontSize(7).text(leftFr, margin, y + 9);
+          document.font('Times-Bold').fontSize(8.5).text(leftValue.toUpperCase(), margin + 112, y + 1, { width: rightX - margin - 112 });
           if (rightMg) {
-            document.font('Courier-Bold').fontSize(8).text(rightMg, rightX, y);
-            document.font('Courier-Oblique').fontSize(7).text(rightFr, rightX, y + 9);
-            document.font('Courier-Bold').fontSize(8.5).text(rightValue.toUpperCase(), rightX + 78, y + 1, { width: pageWidth - margin - rightX - 78 });
+            document.font('Times-Bold').fontSize(8).text(rightMg, rightX, y);
+            document.font('Times-Italic').fontSize(7).text(rightFr, rightX, y + 9);
+            document.font('Times-Bold').fontSize(8.5).text(rightValue.toUpperCase(), rightX + 78, y + 1, { width: pageWidth - margin - rightX - 78 });
           }
           document.moveTo(margin, y + 20).lineTo(pageWidth - margin, y + 20).lineWidth(0.35).dash(1, { space: 2 }).strokeColor('#777777').stroke();
           document.undash();
@@ -717,20 +717,28 @@ export class RequestsService {
         bilingualField(242, 'Ray', 'Père', fill(getText('nomPere')), 'Reny', 'Mère', fill(getText('nomMere')), 300);
         bilingualField(269, 'Asa aman-draharaha', 'Profession', fill(getText('profession')), 'Zom-pirenena', 'Nationalité', fill(getText('nationalite') || 'Malagasy'), 330);
 
-        document.font('Courier-Bold').fontSize(8).text("Dia monina ao amin'ny Lot", margin, 296);
-        document.font('Courier-Oblique').fontSize(7).text('réside effectivement', margin, 305);
-        document.font('Courier-Bold').fontSize(8.5).text(fill(getText('lotLieuDit') || getText('adresse')).toUpperCase(), margin + 150, 297, { width: contentWidth - 150 });
-        document.moveTo(margin, 318).lineTo(pageWidth - margin, 318).lineWidth(0.35).dash(1, { space: 2 }).stroke();
+        const passportNumber = getText('numeroPasseport');
+        const passportIssueDate = formatDate(getText('dateDelivrancePasseport'));
+        const passportIssuePlace = getText('lieuDelivrancePasseport');
+        if (passportNumber || passportIssueDate || passportIssuePlace) {
+          bilingualField(296, 'Passeport', 'Passeport', passportNumber || '—', 'Délivré le', 'délivré le', passportIssueDate || '—', 330);
+        }
+        const addressY = passportNumber || passportIssueDate || passportIssuePlace ? 315 : 296;
+        document.font('Times-Bold').fontSize(8).text("Dia monina ao amin'ny Lot", margin, addressY);
+        document.font('Times-Italic').fontSize(7).text('réside effectivement', margin, addressY + 9);
+        document.font('Times-Bold').fontSize(8.5).text(fill(getText('lotLieuDit') || getText('adresse')).toUpperCase(), margin + 150, addressY + 1, { width: contentWidth - 150 });
+        const fokonolonaY = addressY + 20;
+        document.moveTo(margin, fokonolonaY - 8).lineTo(pageWidth - margin, fokonolonaY - 8).lineWidth(0.35).dash(1, { space: 2 }).stroke();
         document.undash();
-        document.font('Courier-Bold').fontSize(8).text("Ary voasoratra ho isan'ny fokonolona laharana faha", margin, 326);
-        document.font('Courier-Bold').fontSize(8.5).text(fill(getText('numeroFokonolona')).toUpperCase(), margin + 315, 327);
+        document.font('Times-Bold').fontSize(8).text("Ary voasoratra ho isan'ny fokonolona laharana faha", margin, fokonolonaY);
+        document.font('Times-Bold').fontSize(8.5).text(fill(getText('numeroFokonolona')).toUpperCase(), margin + 315, fokonolonaY + 1);
 
-        document.moveTo(margin, 345).lineTo(pageWidth - margin, 345).lineWidth(0.35).dash(1, { space: 2 }).stroke();
+        document.moveTo(margin, 350).lineTo(pageWidth - margin, 350).lineWidth(0.35).dash(1, { space: 2 }).stroke();
         document.undash();
-        document.font('Courier-Bold').fontSize(8).text(`N° ${fill(admin('receiptNumber'))}`, margin, 354);
-        document.font('Courier-Bold').fontSize(7.5).text(`${issueLocation.toUpperCase()} faha, ${issueDate}`, pageWidth - margin - 220, 350, { width: 220, align: 'right' });
-        document.font('Courier-Bold').fontSize(8).text('Ny Sefom-pokontany', pageWidth - margin - 170, 364, { width: 170, align: 'right' });
-        if (stampImage) document.image(stampImage, pageWidth - margin - 85, 365, { fit: [58, 58] });
+        document.font('Times-Bold').fontSize(8).text(`N° ${fill(admin('receiptNumber'))}`, margin, 356);
+        document.font('Times-Bold').fontSize(7.5).text(`${issueLocation.toUpperCase()} faha, ${issueDate}`, pageWidth - margin - 220, 356, { width: 220, align: 'right' });
+        document.font('Times-Bold').fontSize(8).text('Ny Sefom-pokontany', pageWidth - margin - 170, 367, { width: 170, align: 'right' });
+        if (stampImage) document.image(stampImage, pageWidth - margin - 85, 368, { fit: [58, 58] });
         if (signatureImage) document.image(signatureImage, pageWidth - margin - 155, 379, { fit: [105, 38] });
         document.end();
         return;

@@ -5,8 +5,9 @@ import { Archive, Bell, Bot, CalendarDays, FileText, LayoutDashboard, Menu, Sear
 import { createPortal } from 'react-dom';
 import { useAuth, type AuthUser } from '../auth';
 import { usePreferences } from '../preferences';
-import { adminService, appointmentService, authService, complaintService, firearmsService, notificationService, userService } from '../services/api';
+import { adminService, appointmentService, authService, complaintService, firearmsService, notificationService, prefectureService, userService } from '../services/api';
 import type { NotificationItem } from '../types';
+import { CITIZEN_DOCUMENT_READ_EVENT, getReadCitizenDocuments } from '../citizen-document-read';
 
 type AppLayoutVariant = 'frontoffice' | 'backoffice';
 
@@ -161,13 +162,31 @@ export function AppLayout({ children, variant }: { children: ReactNode; variant:
     enabled: isAdmin,
     refetchInterval: isAdmin ? 30000 : false,
   });
+  const { data: citizenRequests = [] } = useQuery({
+    queryKey: ['citizen-navigation-requests', user?.id],
+    queryFn: prefectureService.listRequests,
+    enabled: variant === 'frontoffice' && Boolean(user?.id),
+    refetchInterval: variant === 'frontoffice' ? 30000 : false,
+  });
+  const [, refreshCitizenDocumentCount] = useState(0);
+  useEffect(() => {
+    const refresh = () => refreshCitizenDocumentCount((value) => value + 1);
+    window.addEventListener(CITIZEN_DOCUMENT_READ_EVENT, refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener(CITIZEN_DOCUMENT_READ_EVENT, refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, []);
   const navigation = getNavigation(variant, user);
+  const readCitizenDocuments = getReadCitizenDocuments(user?.id ?? '');
   const navigationCounts: Record<string, number> = {
     '/back/workflow': adminRequests.filter((request) => request.status === 'SUBMITTED').length,
     '/back/armements': firearmRequests.filter((request) => request.status === 'PENDING').length,
     '/back/reclamations': complaints.filter((complaint) => complaint.status === 'PENDING').length,
-    '/back/rendez-vous': adminAppointments.filter((appointment) => appointment.status === 'PENDING').length,
+    '/back/rendez-vous': adminAppointments.filter((request) => request.status === 'PENDING').length,
     '/back/utilisateurs': passwordResetRequests.length + reactivationRequests.filter((request) => request.status === 'PENDING').length,
+    '/front/documents': citizenRequests.filter((request) => request.status === 'APPROVED' && !readCitizenDocuments.includes(request.id)).length,
   };
   const title = variant === 'backoffice'
     ? t('Back-Office préfecture')
@@ -223,7 +242,7 @@ export function AppLayout({ children, variant }: { children: ReactNode; variant:
     <div className="brand"><span className="brand-mark"><Archive size={20} /></span><span>ARCHIVIA<small>{t('fonds préfectoral')}</small></span><button className="icon-button close-nav" onClick={() => setOpen(false)} aria-label={t('Fermer')}><X size={18} /></button></div>
     {title && <p className="nav-caption">{title}</p>}
     <nav>{navigation.map(({ to, label, icon: Icon }) => {
-      const count = isAdmin ? navigationCounts[to] ?? 0 : 0;
+      const count = navigationCounts[to] ?? 0;
       return <Fragment key={to}>
       <NavLink to={to} end={to === navigation[0].to} aria-label={count > 0 ? t('{{label}} : {{count}} demandes en attente', { label: t(label), count }) : undefined} onClick={() => { setOpen(false); setProfileMenuOpen(false); }}><Icon size={17} />{t(label)}{count > 0 && <span className="nav-pending-count" aria-hidden="true">{count > 99 ? '99+' : count}</span>}</NavLink>
     </Fragment>;

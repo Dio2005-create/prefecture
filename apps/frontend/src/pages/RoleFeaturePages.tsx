@@ -7,10 +7,12 @@ import { adminService, appointmentService, authService, documentService, notific
 import { ErrorState, Loading, PageIntro, Pagination, Status, Toast, useToast } from '../components/ui';
 import { useAuth } from '../auth';
 import { usePreferences } from '../preferences';
+import { markCitizenDocumentsRead } from '../citizen-document-read';
 
 export function CitizenDocumentsPage() {
   const { t, language } = usePreferences();
   const { data: requests = [], isLoading } = useQuery({ queryKey: ['citizen-requests'], queryFn: prefectureService.listRequests, refetchInterval: 3000 });
+  const { user } = useAuth();
   const [downloadError, setDownloadError] = useState('');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -19,6 +21,9 @@ export function CitizenDocumentsPage() {
   const approved = requests
     .filter((request: { status: string }) => request.status === 'APPROVED')
     .sort((first, second) => new Date(second.updatedAt).getTime() - new Date(first.updatedAt).getTime());
+  useEffect(() => {
+    if (approved.length > 0 && user?.id) markCitizenDocumentsRead(user.id, approved.map((request) => request.id));
+  }, [approved.length, user?.id]);
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const filtered = approved.filter((request) => {
     const requestDate = request.updatedAt.slice(0, 10);

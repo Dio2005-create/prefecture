@@ -146,15 +146,25 @@ export class AgentService {
     };
   }
 
+  private async nextResidenceSequence(key: string, maximum: number, width: number) {
+    const setting = await this.prisma.platformSetting.findUnique({ where: { key } });
+    const parsed = Number.parseInt(setting?.value ?? '0', 10);
+    const current = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 0), maximum) : 0;
+    const next = current >= maximum ? 1 : current + 1;
+    await this.prisma.platformSetting.upsert({
+      where: { key },
+      update: { value: String(next) },
+      create: { key, value: String(next) },
+    });
+    return String(next).padStart(width, '0');
+  }
+
   async approveRequest(
     requestId: string,
     changedById: string,
     notes?: string,
     certificateAdministration?: {
-      certificateNumber: string;
       reference: string;
-      fee: string;
-      receiptNumber: string;
       issueLocation: string;
     },
   ) {
@@ -177,23 +187,30 @@ export class AgentService {
     if (completeness.missingFields.length || completeness.invalidFields.length || completeness.missingAttachments.length) {
       throw new BadRequestException(`Le dossier ne peut pas être validé : ${[...completeness.missingFields, ...completeness.invalidFields, ...completeness.missingAttachments].join(', ')}`);
     }
+    let residenceAdministration: {
+      reference: string;
+      issueLocation: string;
+      certificateNumber: string;
+      receiptNumber: string;
+      fee: string;
+    } | undefined;
     if (request.type === RequestType.RESIDENCE_CERTIFICATE) {
       if (!certificateAdministration) {
-        throw new BadRequestException('Renseignez le numéro du certificat, la référence FKT/RES, les droits, la quittance et le lieu de délivrance.');
+        throw new BadRequestException('Renseignez la référence FKT/RES et le lieu de délivrance.');
       }
-      const requiredDetails = [
-        certificateAdministration.certificateNumber,
-        certificateAdministration.reference,
-        certificateAdministration.fee,
-        certificateAdministration.receiptNumber,
-        certificateAdministration.issueLocation,
-      ];
+      const requiredDetails = [certificateAdministration.reference, certificateAdministration.issueLocation];
       if (requiredDetails.some((value) => typeof value !== 'string' || !value.trim())) {
-        throw new BadRequestException('Renseignez le numéro du certificat, la référence FKT/RES, les droits, la quittance et le lieu de délivrance.');
+        throw new BadRequestException('Renseignez la référence FKT/RES et le lieu de délivrance.');
       }
-      if (!/^\d+(?:[.,]\d{1,2})?$/.test(certificateAdministration.fee.trim())) {
-        throw new BadRequestException('Le montant des droits doit être un nombre valide.');
-      }
+      const certificateNumber = await this.nextResidenceSequence('residence.certificateSequence', 9999999, 7);
+      const receiptNumber = await this.nextResidenceSequence('residence.receiptSequence', 9999, 4);
+      residenceAdministration = {
+        reference: certificateAdministration.reference.trim(),
+        issueLocation: certificateAdministration.issueLocation.trim(),
+        certificateNumber,
+        receiptNumber,
+        fee: String(request.fee ?? 0),
+      };
     }
 
     const updated = await this.prisma.serviceRequest.update({
@@ -204,11 +221,11 @@ export class AgentService {
           formData: {
             ...formData,
             certificateAdministration: {
-              certificateNumber: certificateAdministration!.certificateNumber.trim(),
-              reference: certificateAdministration!.reference.trim(),
-              fee: certificateAdministration!.fee.trim(),
-              receiptNumber: certificateAdministration!.receiptNumber.trim(),
-              issueLocation: certificateAdministration!.issueLocation.trim(),
+              certificateNumber: residenceAdministration!.certificateNumber,
+              reference: residenceAdministration!.reference,
+              fee: residenceAdministration!.fee,
+              receiptNumber: residenceAdministration!.receiptNumber,
+              issueLocation: residenceAdministration!.issueLocation,
               issuedAt: new Date().toISOString(),
             },
           } as Prisma.InputJsonValue,

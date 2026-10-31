@@ -225,10 +225,7 @@ export const adminService = {
     id: string,
     notes?: string,
     certificateAdministration?: {
-      certificateNumber: string;
       reference: string;
-      fee: string;
-      receiptNumber: string;
       issueLocation: string;
     },
   ) =>

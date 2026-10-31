@@ -36,10 +36,7 @@ interface RequestCard {
     notes?: string,
     slotId?: string,
     certificateAdministration?: {
-      certificateNumber: string;
       reference: string;
-      fee: string;
-      receiptNumber: string;
       issueLocation: string;
     },
   ) => void;
@@ -60,10 +57,7 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
     const saved = request.formData?.certificateAdministration;
     const values = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved as Record<string, unknown> : {};
     return {
-      certificateNumber: String(values.certificateNumber ?? ''),
       reference: String(values.reference ?? ''),
-      fee: String(values.fee ?? request.fee ?? ''),
-      receiptNumber: String(values.receiptNumber ?? ''),
       issueLocation: String(values.issueLocation ?? 'Ihosy'),
     };
   });
@@ -173,18 +167,11 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
               </> : isResidenceApproval ? <>
                 <p>{t('Renseignez les références administratives qui figureront sur le certificat de résidence délivré.')}</p>
                 <div className="firearms-form-grid">
-                  <label>{t('Numéro du certificat')} *
-                    <input required value={certificateAdministration.certificateNumber} onChange={(event) => setCertificateAdministration((current) => ({ ...current, certificateNumber: event.target.value }))} />
-                  </label>
+                  <div className="firearms-message"><strong>{t('Numéro du certificat')}</strong><br />{t('Généré automatiquement sur 7 chiffres.')}</div>
                   <label>{t('Référence FKT/RES')} *
                     <input required value={certificateAdministration.reference} onChange={(event) => setCertificateAdministration((current) => ({ ...current, reference: event.target.value }))} />
                   </label>
-                  <label>{t('Droits (Ar)')} *
-                    <input required inputMode="decimal" pattern="[0-9]+([.,][0-9]{1,2})?" value={certificateAdministration.fee} onChange={(event) => setCertificateAdministration((current) => ({ ...current, fee: event.target.value }))} />
-                  </label>
-                  <label>{t('Numéro de quittance')} *
-                    <input required value={certificateAdministration.receiptNumber} onChange={(event) => setCertificateAdministration((current) => ({ ...current, receiptNumber: event.target.value }))} />
-                  </label>
+                  <div className="firearms-message"><strong>{t('Numéro de quittance')}</strong><br />{t('Généré automatiquement sur 4 chiffres.')}</div>
                   <label>{t('Lieu de délivrance')} *
                     <input required value={certificateAdministration.issueLocation} onChange={(event) => setCertificateAdministration((current) => ({ ...current, issueLocation: event.target.value }))} />
                   </label>
@@ -209,7 +196,7 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
                 <button className="button request-cancel-button" onClick={() => setAction(null)}>
                   {t('Annuler')}
                 </button>
-                <button className="button primary request-confirm-button" onClick={handleAction} disabled={isLoading || (isCinRequest && request.status === 'IN_REVIEW' && !selectedAppointmentSlot) || (isResidenceApproval && Object.values(certificateAdministration).some((value) => !value.trim()))}>
+                <button className="button primary request-confirm-button" onClick={handleAction} disabled={isLoading || (isCinRequest && request.status === 'IN_REVIEW' && !selectedAppointmentSlot) || (isResidenceApproval && (!certificateAdministration.reference.trim() || !certificateAdministration.issueLocation.trim()))}>
                   {t(isCinRequest && request.status === 'IN_REVIEW' ? 'Attribuer le rendez-vous' : 'Confirmer approbation')}
                 </button>
               </div>
@@ -324,10 +311,7 @@ export function AdminWorkflowPage() {
     notes?: string,
     slotId?: string,
     certificateAdministration?: {
-      certificateNumber: string;
       reference: string;
-      fee: string;
-      receiptNumber: string;
       issueLocation: string;
     },
   ) => {
