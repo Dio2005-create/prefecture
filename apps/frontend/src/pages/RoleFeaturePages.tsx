@@ -426,6 +426,7 @@ export function AdminDocumentTemplatesPage() {
     ASSOCIATION_DECLARATION: 'Déclaration d’association / ONG', EVENT_AUTHORIZATION: 'Autorisation de manifestation / foire / quête', ACCREDITATION: 'Demande d’agrément', ADMINISTRATIVE_AUTHORIZATION: 'Autre autorisation administrative',
   };
   return <><section className="panel" style={{ padding: 24 }}>
+    <NavLink className="button admin-settings-back" to="/back/parametres"><ArrowLeft size={16} />{t('Retour à Paramètres')}</NavLink>
     <p className="eyebrow">{t('Modèles administratifs')}</p>
     <p>{t('Associez un fichier PDF de référence au type de démarche correspondant.')}</p>
     <div style={{ display: 'grid', gap: 10, marginTop: 18, padding: 14, border: '1px solid var(--color-border)', borderRadius: 8 }}>
@@ -533,6 +534,7 @@ export function AdminStampAndSignaturePage() {
     try { await adminService.deleteMark(id); setDeleteTarget(null); await client.invalidateQueries({ queryKey: ['admin-marks'] }); notify('success', t('Élément supprimé.')); } catch { notify('error', t('Impossible de supprimer cet élément.')); }
   };
   return <><section className="panel" style={{ padding: 24 }}>
+    <NavLink className="button admin-settings-back" to="/back/parametres"><ArrowLeft size={16} />{t('Retour à Paramètres')}</NavLink>
     <p className="eyebrow">{t('Signature & cachet')}</p>
     <h1>{t('Cachets et signatures')}</h1>
     <p>{t('Les éléments actifs sont appliqués automatiquement aux PDF délivrés.')}</p>

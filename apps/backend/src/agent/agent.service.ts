@@ -103,7 +103,7 @@ export class AgentService {
     const currentLocalMonthStart = new Date(Date.UTC(localYear, localMonth - 1, 1));
     const monthlyStart = new Date(currentLocalMonthStart.getTime() - 3 * 60 * 60 * 1000);
 
-    const [total, pending, approved, rejected, totalUsers, citizens, administrators, activeUsers, monthlyRequests, monthlyUsers] = await Promise.all([
+    const [total, pending, approved, rejected, totalUsers, citizens, administrators, activeUsers, monthlyRequests, monthlyUsers, paymentBalance] = await Promise.all([
       this.prisma.serviceRequest.count(),
       this.prisma.serviceRequest.count({ where: { status: { in: ['SUBMITTED', 'IN_REVIEW', 'NEEDS_INFO', 'IN_PROGRESS', 'PENDING_CHIEF', 'PENDING_PREFECT'] } } }),
       this.prisma.serviceRequest.count({ where: { status: 'APPROVED' } }),
@@ -126,6 +126,10 @@ export class AgentService {
         GROUP BY month
         ORDER BY month
       `,
+      this.prisma.payment.aggregate({
+        where: { status: 'SUCCEEDED' },
+        _sum: { amount: true },
+      }),
     ]);
     const monthlySeries = Array.from({ length: 6 }, (_, index) => {
       const month = new Date(Date.UTC(localYear, localMonth - 1 - 5 + index, 1));
@@ -136,7 +140,10 @@ export class AgentService {
         users: Number(monthlyUsers.find((entry) => entry.month === key)?.count ?? 0),
       };
     });
-    return { total, pending, approved, rejected, totalUsers, citizens, administrators, activeUsers, monthlySeries };
+    return {
+      total, pending, approved, rejected, totalUsers, citizens, administrators, activeUsers, monthlySeries,
+      paymentBalance: Number(paymentBalance._sum.amount ?? 0),
+    };
   }
 
   async approveRequest(
@@ -197,11 +204,11 @@ export class AgentService {
           formData: {
             ...formData,
             certificateAdministration: {
-              certificateNumber: certificateAdministration.certificateNumber.trim(),
-              reference: certificateAdministration.reference.trim(),
-              fee: certificateAdministration.fee.trim(),
-              receiptNumber: certificateAdministration.receiptNumber.trim(),
-              issueLocation: certificateAdministration.issueLocation.trim(),
+              certificateNumber: certificateAdministration!.certificateNumber.trim(),
+              reference: certificateAdministration!.reference.trim(),
+              fee: certificateAdministration!.fee.trim(),
+              receiptNumber: certificateAdministration!.receiptNumber.trim(),
+              issueLocation: certificateAdministration!.issueLocation.trim(),
               issuedAt: new Date().toISOString(),
             },
           } as Prisma.InputJsonValue,

@@ -69,6 +69,14 @@ export function FirearmsPage() {
     queryKey: ['firearms-my-requests'],
     queryFn: firearmsService.listMyRequests,
   });
+  const firearmFees: Record<FirearmRequestType, number> = {
+    HOLDING_PERMIT: 25000,
+    CARRY_PERMIT: 35000,
+    REGISTER_FIREARM: 20000,
+    RENEW_PERMIT: 20000,
+    DEREGISTER_FIREARM: 10000,
+    TRANSFER_FIREARM: 15000,
+  };
   const mutation = useMutation({
     mutationFn: () => firearmsService.createRequest({ type, data, files }),
     onSuccess: async () => {
@@ -146,6 +154,7 @@ export function FirearmsPage() {
           </select>
         </label>
 
+        <p className="firearms-message" style={{ marginBottom: 0 }}><strong>Frais simulés : {firearmFees[type].toLocaleString('fr-FR')} Ar</strong></p>
         {type === 'REGISTER_FIREARM' && <div className="firearms-form-grid">
           <label>{t('Type d’arme')}<input required maxLength={80} value={data.weaponType ?? ''} onChange={(event) => updateField('weaponType', event.target.value)} placeholder={t('Ex. fusil, pistolet')} /></label>
           <label>{t('Marque')}<input required maxLength={100} value={data.brand ?? ''} onChange={(event) => updateField('brand', event.target.value)} /></label>

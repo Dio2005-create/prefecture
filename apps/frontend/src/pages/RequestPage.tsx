@@ -107,8 +107,8 @@ export function RequestPage() {
   });
 
   const { data: dynamicRequirements, isLoading: loadingRequirements, isError: requirementsError } = useQuery<RequestRequirements>({
-    queryKey: ['request-requirements', requestType, formData.motif],
-    queryFn: () => prefectureService.requirements(requestType, formData.motif),
+    queryKey: ['request-requirements', requestType, formData.motif, formData.dateNaissance],
+    queryFn: () => prefectureService.requirements(requestType, formData.motif, formData),
   });
   const { data: fees = {}, isLoading: loadingFees, isError: feesError } = useQuery({
     queryKey: ['prefecture-fees'],
@@ -132,7 +132,7 @@ export function RequestPage() {
   const [editError, setEditError] = useState('');
   const { data: editRequirements, isLoading: loadingEditRequirements } = useQuery<RequestRequirements>({
     queryKey: ['request-requirements', editingRequest?.type, editFormData.motif],
-    queryFn: () => prefectureService.requirements(editingRequest!.type as RequestType, editFormData.motif),
+    queryFn: () => prefectureService.requirements(editingRequest!.type as RequestType, editFormData.motif, editFormData),
     enabled: Boolean(editingRequest),
   });
   const expandedRequest = requests.find((request) => request.id === expandedRequestId);
@@ -168,6 +168,19 @@ export function RequestPage() {
   const requiredAttachments = dynamicRequirements?.attachments ?? [];
   const requestFee = Number(fees[requestType] ?? 0);
   const todayDate = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+  const residenceBirthDate = requestType === 'RESIDENCE_CERTIFICATE' && formData.dateNaissance
+    ? new Date(`${formData.dateNaissance}T00:00:00`)
+    : null;
+  let residenceAge = -1;
+  if (residenceBirthDate && !Number.isNaN(residenceBirthDate.getTime())) {
+    const today = new Date();
+    residenceAge = today.getFullYear() - residenceBirthDate.getFullYear();
+    if (today.getMonth() < residenceBirthDate.getMonth() || (today.getMonth() === residenceBirthDate.getMonth() && today.getDate() < residenceBirthDate.getDate())) residenceAge -= 1;
+  }
+  const residenceIsAdult = residenceAge >= 18;
+  const visibleFormFields = requestType === 'RESIDENCE_CERTIFICATE'
+    ? formFields.filter((field) => residenceIsAdult || !['cin', 'dateDelivranceCin', 'lieuDelivranceCin'].includes(field.name))
+    : formFields;
   const requiredAttachmentsAreValid = requiredAttachments.every((requirement) =>
     !requirement.required || selectedFiles.filter((item) => item.requirement === requirement.label).length >= (requirement.minFiles ?? 1),
   );
@@ -184,7 +197,7 @@ export function RequestPage() {
     if (value && field.type === 'select' && !field.options?.includes(value)) {
       requestFormWarnings.push(`${t(field.label)} : ${t('Sélection invalide.')}`);
     }
-    if (value && field.name.toLowerCase().includes('cin') && field.name !== 'cinNif' && !/^\d{12}$/.test(value)) {
+    if (value && ['cin', 'cinDemandeur', 'numeroCin'].includes(field.name) && !/^\d{12}$/.test(value)) {
       requestFormWarnings.push(`${t(field.label)} : ${t('La CIN doit contenir exactement 12 chiffres.')}`);
     }
     if (field.name === 'datePerte' && value && value > todayDate) {
@@ -355,7 +368,7 @@ export function RequestPage() {
       const value = formData[field.name]?.trim() ?? '';
       if (field.required && !value) errors[field.name] = 'Ce champ est obligatoire.';
       if (value && field.type === 'select' && !field.options?.includes(value)) errors[field.name] = 'Sélection invalide.';
-      if (value && field.name.toLowerCase().includes('cin') && field.name !== 'cinNif' && !/^\d{12}$/.test(value)) errors[field.name] = 'La CIN doit contenir exactement 12 chiffres.';
+      if (value && ['cin', 'cinDemandeur', 'numeroCin'].includes(field.name) && !/^\d{12}$/.test(value)) errors[field.name] = 'La CIN doit contenir exactement 12 chiffres.';
       if (field.name === 'datePerte' && value && value > todayDate) errors[field.name] = 'La date de perte ne peut pas être dans le futur.';
     });
     if ((requestType === 'CIN_REQUEST' || requestType === 'CIN_RENEWAL') && formData.dateNaissance) {
@@ -424,7 +437,7 @@ export function RequestPage() {
           </label></section>
 
           <section className="request-form-section"><h3>{t('Informations demandées')}</h3><div className="request-form-grid">
-            {formFields.map((field) => (
+            {visibleFormFields.map((field) => (
               <label className={`request-field ${field.type === 'textarea' ? 'full-width' : ''}`} key={field.name}>
                 {t(field.label)}{field.required ? ' *' : ''}
                 {requestType === 'CIN_RENEWAL' && field.name === 'motif' ? (
@@ -477,11 +490,38 @@ export function RequestPage() {
                   <input
                     type={field.type}
                     min={field.name === 'tailleCm' ? 100 : undefined}
-                    max={field.name === 'tailleCm' ? 250 : field.name === 'datePerte' ? todayDate : undefined}
+                    max={field.name === 'tailleCm' ? 250 : ['datePerte', 'dateNaissance'].includes(field.name) ? todayDate : undefined}
                     step={field.name === 'tailleCm' ? 1 : undefined}
                     required={field.required}
                     value={formData[field.name] ?? ''}
-                    onChange={(e) => { setFormData((prev) => ({ ...prev, [field.name]: e.target.value })); setFieldErrors((prev) => ({ ...prev, [field.name]: '' })); }}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData((prev) => {
+                        const next = { ...prev, [field.name]: value };
+                        if (requestType === 'RESIDENCE_CERTIFICATE' && field.name === 'dateNaissance') {
+                          const birthDate = new Date(`${value}T00:00:00`);
+                          const today = new Date();
+                          let age = today.getFullYear() - birthDate.getFullYear();
+                          if (today.getMonth() < birthDate.getMonth() || (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate())) age -= 1;
+                          if (!Number.isNaN(birthDate.getTime()) && age < 18) {
+                            delete next.cin;
+                            delete next.dateDelivranceCin;
+                            delete next.lieuDelivranceCin;
+                          }
+                        }
+                        return next;
+                      });
+                      if (requestType === 'RESIDENCE_CERTIFICATE' && field.name === 'dateNaissance') {
+                        const birthDate = new Date(`${value}T00:00:00`);
+                        const today = new Date();
+                        let age = today.getFullYear() - birthDate.getFullYear();
+                        if (today.getMonth() < birthDate.getMonth() || (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate())) age -= 1;
+                        if (!Number.isNaN(birthDate.getTime()) && age < 18) {
+                          setSelectedFiles((previous) => previous.filter((item) => !item.requirement.startsWith('CIN du demandeur')));
+                        }
+                      }
+                      setFieldErrors((prev) => ({ ...prev, [field.name]: '' }));
+                    }}
                     placeholder={field.name === 'materielsPerdus' ? t('Indiquez chaque matériel perdu sur une ligne') : t(field.label)}
                   />
                 )}

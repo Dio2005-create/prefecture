@@ -236,6 +236,7 @@ export function AdminFirearmsPage() {
 
     <section className="firearms-panel">
       <div className="firearms-section-heading"><div><p className="eyebrow">{t('Rapports')}</p><h2>{t('Statistiques par type d’arme')}</h2></div></div>
+      <div className="firearms-overview"><article><span>{t('Solde estimé des contrôles')}</span><strong>{stats ? `${Number(stats.firearmBalance ?? 0).toLocaleString('fr-FR')} Ar` : '…'}</strong></article></div>
       {stats?.firearmsByType.length ? <div className="firearms-type-stats">{stats.firearmsByType.map((item) => <article key={item.weaponType}><span>{item.weaponType}</span><strong>{item.count}</strong></article>)}</div> : <p className="firearms-empty">{t('Aucune arme active recensée.')}</p>}
     </section>
   </section>;

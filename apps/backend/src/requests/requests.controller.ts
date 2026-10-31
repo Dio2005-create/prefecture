@@ -18,8 +18,15 @@ export class RequestsController {
   }
 
   @Get('requirements/:type')
-  requirements(@Param('type') type: RequestType, @Query('motif') motif?: string) {
-    return this.requestsService.getRequirements(type, motif);
+  requirements(@Param('type') type: RequestType, @Query('motif') motif?: string, @Query('formData') formDataJson?: string) {
+    let formData: Record<string, unknown> = {};
+    try {
+      const parsed = formDataJson ? JSON.parse(formDataJson) : {};
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) formData = parsed as Record<string, unknown>;
+    } catch {
+      formData = {};
+    }
+    return this.requestsService.getRequirements(type, motif, formData);
   }
 
   @Get('models/:type/pdf')

@@ -29,6 +29,15 @@ type FirearmInput = {
   recipientCin?: unknown;
 };
 
+const firearmFees: Record<FirearmRequestType, number> = {
+  HOLDING_PERMIT: 25000,
+  CARRY_PERMIT: 35000,
+  REGISTER_FIREARM: 20000,
+  RENEW_PERMIT: 20000,
+  DEREGISTER_FIREARM: 10000,
+  TRANSFER_FIREARM: 15000,
+};
+
 const requestTypeLabels: Record<FirearmRequestType, string> = {
   HOLDING_PERMIT: 'Permis de détention',
   CARRY_PERMIT: 'Permis de port',
@@ -165,7 +174,7 @@ export class FirearmsService implements OnModuleInit, OnModuleDestroy {
           userId,
           firearmId,
           type,
-          data: requestData as Prisma.InputJsonValue,
+          data: { ...requestData, fee: firearmFees[type], paymentStatus: 'SIMULATED' } as Prisma.InputJsonValue,
           attachments: {
             create: files.map((file) => ({
               label: file.label.trim(),
@@ -472,7 +481,16 @@ export class FirearmsService implements OnModuleInit, OnModuleDestroy {
       this.prisma.firearmRequest.groupBy({ by: ['status'], _count: { _all: true } }),
       this.prisma.firearm.groupBy({ by: ['weaponType'], where: { isActive: true }, _count: { _all: true } }),
     ]);
+    const firearmRequests = await this.prisma.firearmRequest.findMany({ select: { type: true, data: true } });
+    const firearmBalance = firearmRequests.reduce((total, request) => {
+      const storedFee = typeof request.data === 'object' && request.data !== null
+        ? Number((request.data as Record<string, unknown>).fee ?? 0)
+        : 0;
+      return total + (storedFee > 0 ? storedFee : firearmFees[request.type]);
+    }, 0);
     return {
+      firearmBalance,
+      firearmFees,
       firearms,
       activeFirearms,
       requests,

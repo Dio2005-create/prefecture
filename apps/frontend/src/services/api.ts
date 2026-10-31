@@ -53,8 +53,8 @@ export const authService = {
 
 export const prefectureService = {
   listServices: async () => (await api.get<PrefectureService[]>('/requests/services')).data,
-  requirements: async (type: RequestType, motif?: string) =>
-    (await api.get<RequestRequirements>(`/requests/requirements/${type}`, { params: motif ? { motif } : undefined })).data,
+  requirements: async (type: RequestType, motif?: string, formData?: Record<string, unknown>) =>
+    (await api.get<RequestRequirements>(`/requests/requirements/${type}`, { params: { ...(motif ? { motif } : {}), ...(formData ? { formData: JSON.stringify(formData) } : {}) } })).data,
   listFees: async () => (await api.get<Partial<Record<RequestType, number>>>('/requests/fees')).data,
   listRequests: async () => (await api.get<CitizenRequest[]>('/requests')).data,
   createRequest: async (payload: { serviceId: string; type: string; title?: string; description?: string; formData?: Record<string, unknown> }) =>
@@ -151,7 +151,7 @@ export const firearmsService = {
   searchBySerial: async (serial: string) =>
     (await api.get<FirearmRecord & { owner: { id: string; nom: string | null; cin: string | null }; history: Array<{ action: string; details: Record<string, unknown>; createdAt: string }> }>('/firearms/admin/search', { params: { serial } })).data,
   stats: async () =>
-    (await api.get<{ firearms: number; activeFirearms: number; requests: number; pendingRequests: number; activePermits: number; expiringPermits: number; requestsByStatus: Record<string, number>; firearmsByType: Array<{ weaponType: string; count: number }> }>('/firearms/admin/stats')).data,
+    (await api.get<{ firearms: number; activeFirearms: number; requests: number; pendingRequests: number; activePermits: number; expiringPermits: number; firearmBalance: number; firearmFees: Record<string, number>; requestsByStatus: Record<string, number>; firearmsByType: Array<{ weaponType: string; count: number }> }>('/firearms/admin/stats')).data,
   downloadReport: async () =>
     (await api.get<Blob>('/firearms/admin/report.csv', { responseType: 'blob' })).data,
 };
@@ -215,7 +215,7 @@ export const adminService = {
   getStats: async () =>
     (await api.get<{
       total: number; pending: number; approved: number; rejected: number;
-      totalUsers: number; citizens: number; administrators: number; activeUsers: number;
+      totalUsers: number; citizens: number; administrators: number; activeUsers: number; paymentBalance: number;
       monthlySeries: Array<{ month: string; requests: number; users: number }>;
     }>('/admin/stats')).data,
   listRequests: async (status?: string) =>

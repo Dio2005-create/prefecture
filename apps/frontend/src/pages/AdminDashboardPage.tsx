@@ -16,7 +16,7 @@ export function AdminDashboardPage() {
   const { data: stats, isLoading } = useQuery({ queryKey: ['admin-stats'], queryFn: adminService.getStats });
   const values = {
     total: 0, pending: 0, approved: 0, rejected: 0, totalUsers: 0,
-    citizens: 0, administrators: 0, activeUsers: 0, ...stats,
+    citizens: 0, administrators: 0, activeUsers: 0, paymentBalance: 0, ...stats,
     monthlySeries: stats?.monthlySeries ?? [],
   };
   const { data: requests = [], isLoading: requestsLoading } = useQuery({ queryKey: ['admin-dashboard-requests', filter], queryFn: () => adminService.listRequests(filter) });
@@ -30,6 +30,7 @@ export function AdminDashboardPage() {
     <div style={{ display: 'grid', gap: '1rem' }}>
       <section className="admin-stat-grid">
         {[
+          { label: 'Solde encaissé', value: `${Number(values.paymentBalance).toLocaleString('fr-FR')} Ar`, note: 'paiements réussis, simulation incluse', icon: Activity },
           { label: 'Demandes', value: values.total, note: 'tous les dossiers', icon: FileCheck2 },
           { label: 'En attente', value: values.pending, note: 'à instruire', icon: FileClock },
           { label: 'Validés', value: values.approved, note: 'validés', icon: FileCheck2 },

@@ -22,11 +22,11 @@ const cinPair = (key: string, label: string, pairGroup = key, multiple = false) 
 
 export const requestRequirements: Record<RequestType, RequestRequirements> = {
   BIRTH_CERTIFICATE: {
-    fields: [field('nomDemandeur', 'Nom et prénoms du demandeur'), field('cinDemandeur', 'CIN du demandeur'), field('adresseDemandeur', 'Adresse du demandeur', 'textarea'), field('lienAvecPersonne', 'Lien avec la personne concernée'), field('nom', 'Nom de la personne concernée'), field('prenoms', 'Prénoms de la personne concernée'), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('nomPere', 'Nom du père'), field('nomMere', 'Nom de la mère'), field('anneeNumeroActe', 'Année / numéro de l’acte (si connu)', 'text', false)],
+    fields: [field('nomDemandeur', 'Nom et prénoms du demandeur'), field('cinDemandeur', 'CIN du demandeur'), field('adresseDemandeur', 'Adresse du demandeur', 'textarea'), field('lienAvecPersonne', 'Lien avec la personne concernée'), field('nom', 'Nom de la personne concernée'), field('prenoms', 'Prénoms de la personne concernée'), field('sexe', 'Sexe', 'select', true, ['Masculin', 'Féminin']), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('heureNaissance', 'Heure de naissance'), field('nomPere', 'Nom du père'), field('professionPere', 'Profession du père'), field('dateNaissancePere', 'Date de naissance du père', 'date'), field('lieuNaissancePere', 'Lieu de naissance du père'), field('nomMere', 'Nom de la mère'), field('professionMere', 'Profession de la mère'), field('dateNaissanceMere', 'Date de naissance de la mère', 'date'), field('lieuNaissanceMere', 'Lieu de naissance de la mère'), field('anneeNumeroActe', 'Année / numéro de l’acte (si connu)', 'text', false)],
     attachments: [...cinPair('cin-demandeur', 'CIN du demandeur')],
   },
   RESIDENCE_CERTIFICATE: {
-    fields: [field('nomComplet', 'Nom et prénoms'), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('nomPere', 'Nom du père'), field('nomMere', 'Nom de la mère'), field('cin', 'Numéro CIN'), field('dateDelivranceCin', 'Date de délivrance de la CIN', 'date'), field('lieuDelivranceCin', 'Lieu de délivrance de la CIN'), field('adresse', 'Adresse actuelle', 'textarea'), field('fokontany', 'Fokontany'), field('lotLieuDit', 'Lot / lieu-dit')],
+    fields: [field('nomComplet', 'Nom et prénoms'), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('nomPere', 'Nom du père'), field('nomMere', 'Nom de la mère'), field('cin', 'Numéro CIN', 'text', false), field('dateDelivranceCin', 'Date de délivrance de la CIN', 'date', false), field('lieuDelivranceCin', 'Lieu de délivrance de la CIN', 'text', false), field('profession', 'Profession'), field('nationalite', 'Nationalité'), field('adresse', 'Adresse actuelle', 'textarea'), field('fokontany', 'Fokontany'), field('lotLieuDit', 'Lot / lieu-dit'), field('numeroFokonolona', 'Numéro de fokonolona')],
     attachments: [],
   },
   NATIONALITY_CERTIFICATE: {
@@ -106,6 +106,23 @@ const normalizeReason = (value: unknown) => {
 
 export const getRequestRequirements = (type: RequestType, formData: Record<string, unknown> = {}) => {
   const requirements = requestRequirements[type];
+  if (type === RequestType.RESIDENCE_CERTIFICATE) {
+    const birthDateValue = String(formData.dateNaissance ?? '').trim();
+    const birthDate = /^\d{4}-\d{2}-\d{2}$/.test(birthDateValue) ? new Date(`${birthDateValue}T00:00:00`) : null;
+    const today = new Date();
+    const isAdult = birthDate ? today.getFullYear() - birthDate.getFullYear() - (
+      today.getMonth() < birthDate.getMonth() || (today.getMonth() === birthDate.getMonth() && today.getDate() < birthDate.getDate()) ? 1 : 0
+    ) >= 18 : false;
+    return {
+      ...requirements,
+      fields: requirements.fields.map((item) => ['cin', 'dateDelivranceCin', 'lieuDelivranceCin'].includes(item.name)
+        ? { ...item, required: isAdult }
+        : item),
+      attachments: isAdult
+        ? cinPair('cin-demandeur-residence', 'CIN du demandeur')
+        : [required('acte-naissance-residence', 'Acte de naissance du demandeur')],
+    };
+  }
   if (type !== RequestType.CIN_RENEWAL) return requirements;
 
   const commonAttachments = requirements.attachments.filter(
@@ -153,7 +170,7 @@ export function getRequestCompleteness(
       }
     }
     if (item.type === 'number' && !Number.isFinite(Number(value))) return [item.label];
-    if (item.name.toLowerCase().includes('cin') && item.name !== 'cinNif' && !/^\d{12}$/.test(String(value).trim())) {
+    if (['cin', 'cinDemandeur', 'numeroCin'].includes(item.name) && !/^\d{12}$/.test(String(value).trim())) {
       return [item.label];
     }
     if (item.name === 'tailleCm' && (!Number.isInteger(Number(value)) || Number(value) < 100 || Number(value) > 250)) {
