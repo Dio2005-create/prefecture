@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import axios from 'axios';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, Eye, Download, Pencil, Save, X } from 'lucide-react';
@@ -87,6 +88,22 @@ function renderValue(value: unknown) {
   if (Array.isArray(value)) return value.join(', ');
   if (value && typeof value === 'object') return JSON.stringify(value);
   return '—';
+}
+
+function advanceToNextFormControl(event: ReactKeyboardEvent<HTMLElement>) {
+  if (event.key !== 'Enter' || event.shiftKey || event.currentTarget instanceof HTMLTextAreaElement) return;
+  const container = event.currentTarget.closest('.request-form');
+  if (!container) return;
+  const controls = Array.from(container.querySelectorAll<HTMLElement>(
+    'input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])',
+  ))
+    .filter((control) => control.tabIndex >= 0);
+  const currentIndex = controls.indexOf(event.currentTarget);
+  const nextControl = controls[currentIndex + 1];
+  if (nextControl) {
+    event.preventDefault();
+    nextControl.focus();
+  }
 }
 
 export function RequestPage() {
@@ -443,6 +460,7 @@ export function RequestPage() {
                 {t(field.label)}{field.required ? ' *' : ''}
                 {requestType === 'CIN_RENEWAL' && field.name === 'motif' ? (
                   <select
+                    onKeyDown={advanceToNextFormControl}
                     required
                     value={formData.motif ?? ''}
                     onChange={(e) => {
@@ -461,6 +479,7 @@ export function RequestPage() {
                   </select>
                 ) : field.type === 'select' ? (
                   <select
+                    onKeyDown={advanceToNextFormControl}
                     required={field.required}
                     value={formData[field.name] ?? ''}
                     onChange={(e) => {
@@ -481,6 +500,7 @@ export function RequestPage() {
                   </select>
                 ) : field.type === 'textarea' ? (
                   <textarea
+                    onKeyDown={advanceToNextFormControl}
                     required={field.required}
                     value={formData[field.name] ?? ''}
                     onChange={(e) => { setFormData((prev) => ({ ...prev, [field.name]: e.target.value })); setFieldErrors((prev) => ({ ...prev, [field.name]: '' })); }}
@@ -489,6 +509,7 @@ export function RequestPage() {
                   />
                 ) : (
                   <input
+                    onKeyDown={advanceToNextFormControl}
                     type={field.type}
                     min={field.name === 'tailleCm' ? 100 : undefined}
                     max={field.name === 'tailleCm' ? 250 : ['datePerte', 'dateNaissance'].includes(field.name) ? todayDate : undefined}
@@ -593,23 +614,23 @@ export function RequestPage() {
           </div>
           {loadingEditRequirements ? <p>{t('Chargement...')}</p> : (
             <div className="request-form">
-              <label className="request-field">{t('Objet')}<input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} /></label>
+              <label className="request-field">{t('Objet')}<input onKeyDown={advanceToNextFormControl} value={editTitle} onChange={(event) => setEditTitle(event.target.value)} /></label>
               <section className="request-form-section"><h3>{t('Informations demandées')}</h3><div className="request-form-grid">
                 {(editRequirements?.fields ?? []).map((field) => (
                   <label className={`request-field ${field.type === 'textarea' ? 'full-width' : ''}`} key={field.name}>
                     {t(field.label)}{field.required ? ' *' : ''}
-                    {field.type === 'select' ? <select required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => {
+                    {field.type === 'select' ? <select onKeyDown={advanceToNextFormControl} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => {
                       const value = event.target.value;
                       setEditFormData((previous) => ({ ...previous, [field.name]: value }));
                       if (editingRequest.type === 'CIN_RENEWAL' && field.name === 'motif') {
                         setEditAttachmentLabel('');
                         setEditAttachmentFile(null);
                       }
-                    }}><option value="">{t(field.name === 'motif' ? 'Choisir un motif' : 'Choisir une unité')}</option>{(field.options ?? []).map((option) => <option key={option} value={option}>{t(option)}</option>)}</select> : field.type === 'textarea' ? <textarea rows={3} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} /> : <input type={field.type} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} />}
+                    }}><option value="">{t(field.name === 'motif' ? 'Choisir un motif' : 'Choisir une unité')}</option>{(field.options ?? []).map((option) => <option key={option} value={option}>{t(option)}</option>)}</select> : field.type === 'textarea' ? <textarea required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} rows={3} /> : <input onKeyDown={advanceToNextFormControl} type={field.type} required={field.required} value={editFormData[field.name] ?? ''} onChange={(event) => setEditFormData((previous) => ({ ...previous, [field.name]: event.target.value }))} />}
                   </label>
                 ))}
               </div></section>
-              <label className="request-field">{t('Description complémentaire')}<textarea rows={3} value={editDescription} onChange={(event) => setEditDescription(event.target.value)} /></label>
+              <label className="request-field">{t('Description complémentaire')}<textarea value={editDescription} onChange={(event) => setEditDescription(event.target.value)} rows={3} /></label>
               <section className="request-form-section"><h3>{t('Pièces justificatives')}</h3>
                 {editingRequest.attachments?.length ? <div style={{ display: 'grid', gap: 8 }}>
                   {editingRequest.attachments.map((attachment) => <div key={attachment.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>

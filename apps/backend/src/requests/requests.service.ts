@@ -14,12 +14,19 @@ import { PaymentProvider } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { getRequestCompleteness, getRequestRequirements } from './request-requirements';
 
-const normalizeSignatureLegalizationData = (
+const normalizeRequestSpecificData = (
   type: RequestType,
   formData: Record<string, unknown>,
+  requestId?: string,
 ) => {
   if (type === RequestType.SIGNATURE_LEGALIZATION) {
     formData.nombreSignatures = 1;
+  }
+  if (type === RequestType.BIRTH_CERTIFICATE) {
+    const birthDate = typeof formData.dateNaissance === 'string' ? formData.dateNaissance.trim() : '';
+    const birthYear = /^\d{4}(?:-|$)/.test(birthDate) ? birthDate.slice(0, 4) : String(new Date().getFullYear());
+    const referenceSuffix = (requestId || randomUUID()).replace(/-/g, '').slice(0, 8).toUpperCase();
+    formData.anneeNumeroActe = `${birthYear} / ${referenceSuffix}`;
   }
   return formData;
 };
@@ -132,6 +139,7 @@ export class RequestsService {
     data: CreateRequestDto,
     attachmentFiles: Array<{ label: string; path: string; originalname: string; mimetype?: string; size?: number }> = [],
     payment?: { provider: PaymentProvider; phone: string; confirmedAmount: number; simulationPin: string },
+    requestId?: string,
   ) {
     if (data.type === RequestType.COMPLAINT) {
       throw new BadRequestException('Les réclamations concernant un document délivré doivent être déposées depuis la page Réclamations.');
@@ -141,7 +149,8 @@ export class RequestsService {
     if (!requestTypesByServiceCode[service.code]?.includes(data.type)) {
       throw new BadRequestException('Cette démarche n’est pas disponible dans le service sélectionné');
     }
-    const formData = normalizeSignatureLegalizationData(data.type, { ...(data.formData ?? {}) });
+    requestId ??= randomUUID();
+    const formData = normalizeRequestSpecificData(data.type, { ...(data.formData ?? {}) }, requestId);
     delete formData.certificateAdministration;
     this.validateFormData(data.type, formData);
     const configuredFee = await this.prisma.platformSetting.findUnique({ where: { key: `fee.${data.type}` } });
@@ -165,6 +174,7 @@ export class RequestsService {
 
     const created = await this.prisma.serviceRequest.create({
       data: {
+        id: requestId,
         userId,
         serviceId: service.id,
         type: data.type,
@@ -227,7 +237,8 @@ export class RequestsService {
     if (data.type === RequestType.COMPLAINT) {
       throw new BadRequestException('Les réclamations concernant un document délivré doivent être déposées depuis la page Réclamations.');
     }
-    const formData = normalizeSignatureLegalizationData(data.type, { ...(data.formData ?? {}) });
+    const requestId = randomUUID();
+    const formData = normalizeRequestSpecificData(data.type, { ...(data.formData ?? {}) }, requestId);
     const requirements = getRequestRequirements(data.type, formData);
     this.validateFormData(data.type, formData);
     const labels = data.attachmentLabels ?? [];
@@ -264,6 +275,7 @@ export class RequestsService {
       data.confirmedAmount && data.paymentProvider && data.paymentPhone
         ? { confirmedAmount: data.confirmedAmount, provider: data.paymentProvider, phone: data.paymentPhone, simulationPin: data.simulationPin ?? '' }
         : undefined,
+      requestId,
     );
     return this.findById(created.id, { id: userId });
   }
@@ -347,7 +359,7 @@ export class RequestsService {
     const storedFormData = request.formData && typeof request.formData === 'object' && !Array.isArray(request.formData)
       ? request.formData as Record<string, unknown>
       : {};
-    const formData = normalizeSignatureLegalizationData(request.type, data.formData ? { ...data.formData } : { ...storedFormData });
+    const formData = normalizeRequestSpecificData(request.type, data.formData ? { ...data.formData } : { ...storedFormData }, request.id);
     if (storedFormData.certificateAdministration !== undefined) {
       formData.certificateAdministration = storedFormData.certificateAdministration;
     } else {
