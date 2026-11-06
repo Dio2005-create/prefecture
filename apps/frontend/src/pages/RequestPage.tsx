@@ -20,7 +20,8 @@ const requestTypesByServiceCode: Record<string, RequestType[]> = {
   ASSOC: ['ASSOCIATION_DECLARATION'],
   MANIF: ['EVENT_AUTHORIZATION'],
   AGREMENT: ['ACCREDITATION'],
-  AUTRE: ['NATIONALITY_CERTIFICATE', 'COMMERCIAL_LICENSE', 'SIGNATURE_LEGALIZATION', 'SPECIAL_REQUEST', 'ADMINISTRATIVE_AUTHORIZATION'],
+  LEGALISATION: ['SIGNATURE_LEGALIZATION'],
+  AUTRE: ['NATIONALITY_CERTIFICATE', 'COMMERCIAL_LICENSE', 'SPECIAL_REQUEST', 'ADMINISTRATIVE_AUTHORIZATION'],
   RECLAMATION: ['COMPLAINT'],
 };
 
@@ -535,7 +536,7 @@ export function RequestPage() {
               const files = selectedFiles.filter((item) => item.requirement === requirement.label);
               return <div className="request-field full-width" key={requirement.key}>
                 <label>{t(requirement.label)}{requirement.required ? ' *' : ` (${t('facultatif')})`}
-                  <input type="file" accept={requirement.label === 'Photo d’identité 4 x 4' ? 'image/jpeg,image/png,.jpg,.jpeg,.png' : 'application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png'} multiple={requirement.multiple} required={requirement.required && files.length < (requirement.minFiles ?? 1)} onChange={(event) => handleFiles(requirement, event.target.files)} />
+                  <input type="file" accept={requirement.label === 'Photo d’identité 4 x 4' ? 'image/jpeg,image/png,.jpg,.jpeg,.png' : requirement.label === 'Document original à légaliser' ? 'application/pdf,.pdf' : 'application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png'} multiple={requirement.multiple} required={requirement.required && files.length < (requirement.minFiles ?? 1)} onChange={(event) => handleFiles(requirement, event.target.files)} />
                 </label>
                 {files.length > 0 && <div className="file-preview">{files.map((item) => <span key={`${requirement.key}-${item.file.name}`} style={{ display: 'flex', alignItems: 'center', gap: 8 }}><small>{item.file.name} ({Math.ceil(item.file.size / 1024)} Ko)</small><button type="button" className="button small" onClick={() => previewFile(item.file)}><Eye size={13} /> {t('Aperçu')}</button></span>)}</div>}
               </div>;

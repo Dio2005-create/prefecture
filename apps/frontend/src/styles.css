@@ -643,6 +643,22 @@ nav a:hover, nav a.active { color: #fff; background: #233d49; border-left-color:
 
 .request-page { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
 .request-page > * { width: 100%; min-width: 0; }
+@media (min-width: 901px) {
+	.request-form-panel, .request-list-panel {
+		height: calc(100vh - 190px);
+		max-height: calc(100vh - 190px);
+		overflow-x: hidden;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		scrollbar-gutter: stable;
+	}
+	.request-page > .request-form-panel,
+	.request-page > .request-list-panel {
+		overflow: auto;
+		overflow-x: hidden;
+		overflow-y: auto;
+	}
+}
 .citizen-request-card { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .citizen-request-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .citizen-request-card-heading > strong { min-width: 0; overflow-wrap: anywhere; }

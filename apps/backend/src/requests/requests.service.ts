@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateRequestDto } from './dto/create-request.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import PDFDocument = require('pdfkit');
+import { PDFDocument as StampablePdfDocument } from 'pdf-lib';
 import { Prisma } from '@prisma/client';
 import { existsSync } from 'node:fs';
 import { createReadStream } from 'node:fs';
@@ -12,6 +13,16 @@ import { RequestType } from '@prisma/client';
 import { PaymentProvider } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { getRequestCompleteness, getRequestRequirements } from './request-requirements';
+
+const normalizeSignatureLegalizationData = (
+  type: RequestType,
+  formData: Record<string, unknown>,
+) => {
+  if (type === RequestType.SIGNATURE_LEGALIZATION) {
+    formData.nombreSignatures = 1;
+  }
+  return formData;
+};
 import { requestModels } from './request-models';
 import { normalizeOfficialMark } from '../agent/official-mark-image';
 import { FastApiAiService } from '../ai/fastapi-ai.service';
@@ -50,10 +61,10 @@ const requestTypesByServiceCode: Record<string, RequestType[]> = {
   ASSOC: [RequestType.ASSOCIATION_DECLARATION],
   MANIF: [RequestType.EVENT_AUTHORIZATION],
   AGREMENT: [RequestType.ACCREDITATION],
+  LEGALISATION: [RequestType.SIGNATURE_LEGALIZATION],
   AUTRE: [
     RequestType.NATIONALITY_CERTIFICATE,
     RequestType.COMMERCIAL_LICENSE,
-    RequestType.SIGNATURE_LEGALIZATION,
     RequestType.SPECIAL_REQUEST,
     RequestType.ADMINISTRATIVE_AUTHORIZATION,
   ],
@@ -130,7 +141,7 @@ export class RequestsService {
     if (!requestTypesByServiceCode[service.code]?.includes(data.type)) {
       throw new BadRequestException('Cette démarche n’est pas disponible dans le service sélectionné');
     }
-    const formData = { ...(data.formData ?? {}) };
+    const formData = normalizeSignatureLegalizationData(data.type, { ...(data.formData ?? {}) });
     delete formData.certificateAdministration;
     this.validateFormData(data.type, formData);
     const configuredFee = await this.prisma.platformSetting.findUnique({ where: { key: `fee.${data.type}` } });
@@ -216,8 +227,9 @@ export class RequestsService {
     if (data.type === RequestType.COMPLAINT) {
       throw new BadRequestException('Les réclamations concernant un document délivré doivent être déposées depuis la page Réclamations.');
     }
-    const requirements = getRequestRequirements(data.type, data.formData ?? {});
-    this.validateFormData(data.type, data.formData ?? {});
+    const formData = normalizeSignatureLegalizationData(data.type, { ...(data.formData ?? {}) });
+    const requirements = getRequestRequirements(data.type, formData);
+    this.validateFormData(data.type, formData);
     const labels = data.attachmentLabels ?? [];
     if (labels.length !== files.length) throw new BadRequestException('Chaque pièce jointe doit être associée à son champ de dépôt');
     const allowedLabels = new Set(requirements.attachments.map((item) => item.label));
@@ -335,7 +347,7 @@ export class RequestsService {
     const storedFormData = request.formData && typeof request.formData === 'object' && !Array.isArray(request.formData)
       ? request.formData as Record<string, unknown>
       : {};
-    const formData = data.formData ? { ...data.formData } : { ...storedFormData };
+    const formData = normalizeSignatureLegalizationData(request.type, data.formData ? { ...data.formData } : { ...storedFormData });
     if (storedFormData.certificateAdministration !== undefined) {
       formData.certificateAdministration = storedFormData.certificateAdministration;
     } else {
@@ -552,6 +564,34 @@ export class RequestsService {
       readOfficialMark(stamp, 'du cachet'),
       readOfficialMark(signature, 'de la signature'),
     ]);
+
+    if (request.type === RequestType.SIGNATURE_LEGALIZATION) {
+      const originalDocument = request.attachments.find((attachment) => attachment.label === 'Document original à légaliser');
+      if (!originalDocument || !existsSync(originalDocument.storagePath)) {
+        throw new NotFoundException('Le document original à légaliser est indisponible');
+      }
+      if (originalDocument.mimeType !== 'application/pdf') {
+        throw new BadRequestException('La légalisation finale conserve uniquement les fichiers PDF. Téléversez le document au format PDF.');
+      }
+
+      const legalizedDocument = await StampablePdfDocument.load(await readFile(originalDocument.storagePath));
+      const pages = legalizedDocument.getPages();
+      if (pages.length === 0) throw new BadRequestException('Le document PDF à légaliser est vide.');
+      const lastPage = pages[pages.length - 1];
+      const { width, height } = lastPage.getSize();
+
+      if (stampImage) {
+        const embeddedStamp = await legalizedDocument.embedPng(stampImage);
+        lastPage.drawImage(embeddedStamp, { x: width - 125, y: 35, width: 90, height: 90 });
+      }
+      if (signatureImage) {
+        const embeddedSignature = await legalizedDocument.embedPng(signatureImage);
+        lastPage.drawImage(embeddedSignature, { x: width - 250, y: 45, width: 130, height: 50 });
+      }
+      legalizedDocument.setTitle(`Document légalisé - ${request.title ?? 'Légalisation de signature'}`);
+      legalizedDocument.setCreator('Plateforme e-Servisy d’Ihosy');
+      return Buffer.from(await legalizedDocument.save());
+    }
 
     return new Promise<Buffer>((resolve, reject) => {
       const document = new PDFDocument({

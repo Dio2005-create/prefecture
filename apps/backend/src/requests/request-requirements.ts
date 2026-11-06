@@ -23,7 +23,10 @@ const cinPair = (key: string, label: string, pairGroup = key, multiple = false) 
 export const requestRequirements: Record<RequestType, RequestRequirements> = {
   BIRTH_CERTIFICATE: {
     fields: [field('nomDemandeur', 'Nom et prénoms du demandeur'), field('cinDemandeur', 'CIN du demandeur'), field('adresseDemandeur', 'Adresse du demandeur', 'textarea'), field('lienAvecPersonne', 'Lien avec la personne concernée'), field('nom', 'Nom de la personne concernée'), field('prenoms', 'Prénoms de la personne concernée'), field('sexe', 'Sexe', 'select', true, ['Masculin', 'Féminin']), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('heureNaissance', 'Heure de naissance'), field('nomPere', 'Nom du père'), field('professionPere', 'Profession du père'), field('dateNaissancePere', 'Date de naissance du père', 'date'), field('lieuNaissancePere', 'Lieu de naissance du père'), field('nomMere', 'Nom de la mère'), field('professionMere', 'Profession de la mère'), field('dateNaissanceMere', 'Date de naissance de la mère', 'date'), field('lieuNaissanceMere', 'Lieu de naissance de la mère'), field('anneeNumeroActe', 'Année / numéro de l’acte (si connu)', 'text', false)],
-    attachments: [...cinPair('cin-demandeur', 'CIN du demandeur')],
+    attachments: [
+      ...cinPair('cin-demandeur', 'CIN du demandeur'),
+      required('certificat-maternite', 'Certificat d’accouchement ou attestation de naissance de la maternité / hôpital'),
+    ],
   },
   RESIDENCE_CERTIFICATE: {
     fields: [field('nomComplet', 'Nom et prénoms'), field('dateNaissance', 'Date de naissance', 'date'), field('lieuNaissance', 'Lieu de naissance'), field('nomPere', 'Nom du père'), field('nomMere', 'Nom de la mère'), field('cin', 'Numéro CIN', 'text', false), field('dateDelivranceCin', 'Date de délivrance de la CIN', 'date', false), field('lieuDelivranceCin', 'Lieu de délivrance de la CIN', 'text', false), field('profession', 'Profession'), field('nationalite', 'Nationalité'), field('numeroPasseport', 'Numéro de passeport', 'text', false), field('dateDelivrancePasseport', 'Date de délivrance du passeport', 'date', false), field('lieuDelivrancePasseport', 'Lieu de délivrance du passeport', 'text', false), field('adresse', 'Adresse actuelle', 'textarea'), field('fokontany', 'Fokontany'), field('lotLieuDit', 'Lot / lieu-dit'), field('numeroFokonolona', 'Numéro de fokonolona')],
@@ -66,7 +69,7 @@ export const requestRequirements: Record<RequestType, RequestRequirements> = {
     attachments: [...cinPair('cin-demandeur', 'CIN du demandeur')],
   },
   SIGNATURE_LEGALIZATION: {
-    fields: [field('nom', 'Nom et prénoms'), field('cin', 'Numéro CIN'), field('adresse', 'Adresse', 'textarea'), field('document', 'Nature du document à légaliser'), field('nombreSignatures', 'Nombre de signatures à légaliser', 'number')],
+    fields: [field('nom', 'Nom et prénoms'), field('cin', 'Numéro CIN'), field('adresse', 'Adresse', 'textarea'), field('document', 'Nature du document à légaliser')],
     attachments: [required('document-original', 'Document original à légaliser'), ...cinPair('cin-signataire', 'CIN du signataire')],
   },
   COMPLAINT: {

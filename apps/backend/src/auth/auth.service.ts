@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import { PrismaService } from '../prisma/prisma.service';
 import type { RoleName } from '@prisma/client';
 import { MailerService } from '../users/mailer.service';
+import { SmsService } from '../notifications/sms.service';
 
 const SESSION_DURATION = 5 * 60 * 1000;
 const scrypt = promisify(deriveKey);
@@ -13,7 +14,7 @@ export class AuthService {
   private readonly sessions = new Map<string, { expiresAt: number; userId: string; temporaryPasswordLogin: boolean }>();
   private readonly logger = new Logger(AuthService.name);
 
-  constructor(private readonly prisma: PrismaService, private readonly mailer: MailerService) {}
+  constructor(private readonly prisma: PrismaService, private readonly mailer: MailerService, private readonly sms: SmsService) {}
 
   private async hashPassword(password: string) {
     const salt = randomBytes(16).toString('hex');
@@ -379,9 +380,6 @@ export class AuthService {
   async requestPasswordReset(identifierInput: string, channel: 'EMAIL' | 'SMS' | 'CIN') {
     const identifier = identifierInput.trim();
     if (!identifier) throw new UnauthorizedException('Saisissez votre identifiant.');
-    if (channel === 'SMS') {
-      throw new ServiceUnavailableException('Le service de réinitialisation par SMS n’est pas disponible pour le moment.');
-    }
     if (channel === 'EMAIL' && !identifier.includes('@')) {
       throw new UnauthorizedException('Saisissez une adresse email valide.');
     }
@@ -437,8 +435,10 @@ export class AuthService {
         message: 'Votre demande est enregistrée. Présentez-vous au guichet avec votre CIN originale pour vérifier votre identité et réinitialiser votre mot de passe.',
       };
     }
-    if (!isEmail || !user.email?.trim()) throw new UnauthorizedException('Aucune adresse email n’est associée à ce compte.');
-    const email = user.email.trim();
+    const phone = user.phone?.trim();
+    if (channel === 'SMS' && !phone) throw new UnauthorizedException('Aucun numéro de téléphone n’est associé à ce compte.');
+    if (channel === 'EMAIL' && !user.email?.trim()) throw new UnauthorizedException('Aucune adresse email n’est associée à ce compte.');
+    const email = user.email?.trim();
 
     const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
     const otp = await this.prisma.passwordResetOtp.create({
@@ -453,13 +453,19 @@ export class AuthService {
       data: { consumedAt: new Date() },
     });
     try {
-      await this.mailer.sendPasswordResetOtp(email, code, user.locale);
+      if (channel === 'SMS') {
+        await this.sms.sendPasswordResetOtp(phone!, code, user.locale);
+      } else {
+        await this.mailer.sendPasswordResetOtp(email!, code, user.locale);
+      }
     } catch (error) {
       await this.prisma.passwordResetOtp.update({ where: { id: otp.id }, data: { consumedAt: new Date() } });
       this.logger.error('Failed to send password reset code', error instanceof Error ? error.stack : String(error));
       throw new ServiceUnavailableException('Le service d’envoi du code est momentanément inaccessible. Vérifiez votre connexion Internet puis réessayez.');
     }
-    return { success: true, requiresOtp: true, channel: 'EMAIL', message: 'Un code de vérification a été envoyé à votre adresse email.' };
+    return channel === 'SMS'
+      ? { success: true, requiresOtp: true, channel: 'SMS', message: 'Un code de vérification a été envoyé par SMS.' }
+      : { success: true, requiresOtp: true, channel: 'EMAIL', message: 'Un code de vérification a été envoyé à votre adresse email.' };
   }
 
   async resetPassword(identifierInput: string, codeInput: string, passwordInput: string) {

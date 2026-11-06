@@ -76,6 +76,12 @@ async function seedServices() {
       description: 'Demande d’agrément administratif auprès de la préfecture',
     },
     {
+      code: 'LEGALISATION',
+      nameFr: 'Légalisation de signature',
+      nameMg: 'Fanamarinana sonia',
+      description: 'Légalisation administrative de signatures sur les documents soumis par le citoyen',
+    },
+    {
       code: 'AUTRE',
       nameFr: 'Autre autorisation administrative',
       nameMg: 'Fahazoan-dalana ara-panjakana hafa',
