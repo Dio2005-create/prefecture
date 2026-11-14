@@ -13,7 +13,9 @@ export function AdminDashboardPage() {
   const { t, language } = usePreferences();
   const [filter, setFilter] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
-  const { data: stats, isLoading } = useQuery({ queryKey: ['admin-stats'], queryFn: adminService.getStats });
+  const currentYear = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Indian/Antananarivo', year: 'numeric' }).format(new Date()));
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const { data: stats, isLoading } = useQuery({ queryKey: ['admin-stats', selectedYear], queryFn: () => adminService.getStats(selectedYear) });
   const values = {
     total: 0, pending: 0, approved: 0, rejected: 0, totalUsers: 0,
     citizens: 0, administrators: 0, activeUsers: 0, paymentBalance: 0, ...stats,
@@ -49,7 +51,7 @@ export function AdminDashboardPage() {
       </section>
 
       <section className="panel admin-monthly-panel">
-        <div className="admin-monthly-heading"><div><p className="eyebrow">{t('Indicateurs')}</p><h2>{t('Évolution des demandes et des utilisateurs')}</h2><small>{t('Inscriptions et demandes créées sur les six derniers mois.')}</small></div></div>
+        <div className="admin-monthly-heading"><div><p className="eyebrow">{t('Indicateurs')}</p><h2>{t('Évolution des demandes et des utilisateurs')}</h2><small>{t('Inscriptions et demandes créées mois par mois sur l’année sélectionnée.')}</small></div><label>{t('Année')}<select value={selectedYear} onChange={(event) => setSelectedYear(Number(event.target.value))}>{(stats?.availableYears ?? [currentYear]).map((year) => <option key={year} value={year}>{year}</option>)}</select></label></div>
         {isLoading ? <Loading /> : <div className="admin-monthly-chart" role="img" aria-label={t('Graphique mensuel des demandes et inscriptions utilisateurs')}>
           {values.monthlySeries.map((item) => <div className="admin-month-column" key={item.month}>
             <div className="admin-month-bars">

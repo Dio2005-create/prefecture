@@ -218,12 +218,13 @@ export const userService = {
 };
 
 export const adminService = {
-  getStats: async () =>
+  getStats: async (year?: number) =>
     (await api.get<{
       total: number; pending: number; approved: number; rejected: number;
       totalUsers: number; citizens: number; administrators: number; activeUsers: number; paymentBalance: number;
       monthlySeries: Array<{ month: string; requests: number; users: number }>;
-    }>('/admin/stats')).data,
+      year: number; availableYears: number[];
+    }>('/admin/stats', { params: year ? { year } : undefined })).data,
   listRequests: async (status?: string) =>
     (await api.get<CitizenRequest[]>('/admin/requests', { params: status ? { status } : undefined })).data,
   hideRequest: async (id: string) => (await api.delete(`/admin/requests/${id}/view`)).data,

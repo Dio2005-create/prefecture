@@ -92,18 +92,21 @@ export class AgentService {
     return this.prisma.serviceRequest.update({ where: { id: requestId }, data: { adminHidden: true } });
   }
 
-  async getPrefectureStats() {
-    const localMonthParts = new Intl.DateTimeFormat('en-US', {
+  async getPrefectureStats(rawYear?: string) {
+    const localDateParts = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Indian/Antananarivo',
       year: 'numeric',
       month: '2-digit',
     }).formatToParts(new Date());
-    const localYear = Number(localMonthParts.find((part) => part.type === 'year')?.value);
-    const localMonth = Number(localMonthParts.find((part) => part.type === 'month')?.value);
-    const firstDisplayedMonthStart = new Date(Date.UTC(localYear, localMonth - 6, 1));
-    const monthlyStart = new Date(firstDisplayedMonthStart.getTime() - 3 * 60 * 60 * 1000);
+    const currentYear = Number(localDateParts.find((part) => part.type === 'year')?.value);
+    const requestedYear = rawYear === undefined ? currentYear : Number(rawYear);
+    if (!Number.isInteger(requestedYear) || requestedYear < 2000 || requestedYear > currentYear) {
+      throw new BadRequestException('Année de statistiques invalide');
+    }
+    const startOfYear = new Date(Date.UTC(requestedYear, 0, 1) - 3 * 60 * 60 * 1000);
+    const startOfNextYear = new Date(Date.UTC(requestedYear + 1, 0, 1) - 3 * 60 * 60 * 1000);
 
-    const [total, pending, approved, rejected, totalUsers, citizens, administrators, activeUsers, monthlyRequests, monthlyUsers, paymentBalance] = await Promise.all([
+    const [total, pending, approved, rejected, totalUsers, citizens, administrators, activeUsers, monthlyRequests, monthlyUsers, paymentBalance, earliestRequest, earliestUser] = await Promise.all([
       this.prisma.serviceRequest.count(),
       this.prisma.serviceRequest.count({ where: { status: { in: ['SUBMITTED', 'IN_REVIEW', 'NEEDS_INFO', 'IN_PROGRESS', 'PENDING_CHIEF', 'PENDING_PREFECT'] } } }),
       this.prisma.serviceRequest.count({ where: { status: 'APPROVED' } }),
@@ -115,14 +118,14 @@ export class AgentService {
       this.prisma.$queryRaw<Array<{ month: string; count: bigint }>>`
         SELECT to_char("createdAt" AT TIME ZONE 'Indian/Antananarivo', 'YYYY-MM') AS month, COUNT(*)::bigint AS count
         FROM "ServiceRequest"
-        WHERE "createdAt" >= ${monthlyStart}
+        WHERE "createdAt" >= ${startOfYear} AND "createdAt" < ${startOfNextYear}
         GROUP BY month
         ORDER BY month
       `,
       this.prisma.$queryRaw<Array<{ month: string; count: bigint }>>`
         SELECT to_char("createdAt" AT TIME ZONE 'Indian/Antananarivo', 'YYYY-MM') AS month, COUNT(*)::bigint AS count
         FROM "User"
-        WHERE "createdAt" >= ${monthlyStart}
+        WHERE "createdAt" >= ${startOfYear} AND "createdAt" < ${startOfNextYear}
         GROUP BY month
         ORDER BY month
       `,
@@ -130,18 +133,28 @@ export class AgentService {
         where: { status: 'SUCCEEDED' },
         _sum: { amount: true },
       }),
+      this.prisma.serviceRequest.aggregate({ _min: { createdAt: true } }),
+      this.prisma.user.aggregate({ _min: { createdAt: true } }),
     ]);
-    const monthlySeries = Array.from({ length: 6 }, (_, index) => {
-      const month = new Date(Date.UTC(localYear, localMonth - 1 - 5 + index, 1));
-      const key = `${month.getUTCFullYear()}-${String(month.getUTCMonth() + 1).padStart(2, '0')}`;
+    const monthlySeries = Array.from({ length: 12 }, (_, index) => {
+      const key = `${requestedYear}-${String(index + 1).padStart(2, '0')}`;
       return {
         month: key,
         requests: Number(monthlyRequests.find((entry) => entry.month === key)?.count ?? 0),
         users: Number(monthlyUsers.find((entry) => entry.month === key)?.count ?? 0),
       };
     });
+    const firstRecord = [earliestRequest._min.createdAt, earliestUser._min.createdAt]
+      .filter((date): date is Date => date !== null)
+      .sort((first, second) => first.getTime() - second.getTime())[0];
+    const earliestYear = firstRecord
+      ? Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Indian/Antananarivo', year: 'numeric' }).format(firstRecord))
+      : currentYear;
+    const firstAvailableYear = Math.min(earliestYear, currentYear);
     return {
       total, pending, approved, rejected, totalUsers, citizens, administrators, activeUsers, monthlySeries,
+      year: requestedYear,
+      availableYears: Array.from({ length: currentYear - firstAvailableYear + 1 }, (_, index) => currentYear - index),
       paymentBalance: Number(paymentBalance._sum.amount ?? 0),
     };
   }

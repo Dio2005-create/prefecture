@@ -16,8 +16,8 @@ export class AgentController {
   constructor(private readonly agentService: AgentService) {}
 
   @Get('stats')
-  async stats() {
-    return this.agentService.getPrefectureStats();
+  async stats(@Query('year') year?: string) {
+    return this.agentService.getPrefectureStats(year);
   }
 
   @Get('settings')

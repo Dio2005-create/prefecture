@@ -1,11 +1,9 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { NavLink } from 'react-router-dom';
-import { FileText, Sparkles, ClipboardCheck, XCircle } from 'lucide-react';
+import { ArrowRight, Check, CheckCircle2, ClipboardCheck, FileCheck2, FileText, Send, Smartphone, Sparkles, UserRound, XCircle } from 'lucide-react';
 import { prefectureService } from '../services/api';
 import { usePreferences } from '../preferences';
-
-const statusLabels: Record<string, string> = { DRAFT: 'Brouillon', SUBMITTED: 'Reçu', IN_REVIEW: 'En instruction', IN_PROGRESS: 'En instruction', NEEDS_INFO: 'Complément demandé', PENDING_CHIEF: 'En attente de validation', PENDING_PREFECT: 'En attente de validation', PENDING_PAYMENT: 'En instruction', APPROVED: 'Validé', REJECTED: 'Rejeté', ARCHIVED: 'Archivé' };
 
 export function CitizenDashboardPage() {
   const { t, language } = usePreferences();
@@ -14,7 +12,7 @@ export function CitizenDashboardPage() {
     queryFn: prefectureService.listServices,
   });
 
-  const { data: requests, isLoading: loadingRequests } = useQuery({
+  const { data: requests } = useQuery({
     queryKey: ['citizen-requests'],
     queryFn: prefectureService.listRequests,
     refetchInterval: 3000,
@@ -70,8 +68,58 @@ export function CitizenDashboardPage() {
         </div>
       </section>
 
-      <section style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '1rem' }}>
-        <div className="panel" style={{ padding: 20 }}>
+      <section className="citizen-home-grid">
+        <div className="panel citizen-journey-panel">
+          <div className="citizen-journey-heading">
+            <div>
+              <p className="eyebrow">{t('Démarche en ligne')}</p>
+              <h2>{t('Votre dossier avance, étape par étape')}</h2>
+              <p>{t('Un parcours simple, du dépôt de votre demande à sa validation.')}</p>
+            </div>
+            <span className="citizen-journey-live"><i />{t('Suivi en direct')}</span>
+          </div>
+          <div className="citizen-journey-video" role="img" aria-label={t('Animation : le citoyen envoie une demande depuis son téléphone, l’administration la valide, puis le citoyen reçoit la confirmation')}>
+            <div className="citizen-scene-glow" />
+            <div className="citizen-scene-halo" />
+            <div className="citizen-scene-stage citizen-stage-send"><span>01</span>{t('Envoi depuis le téléphone')}</div>
+            <div className="citizen-scene-stage citizen-stage-review"><span>02</span>{t('Validation par l’administration')}</div>
+            <div className="citizen-scene-route"><i /><i /><i /><i /><i /></div>
+            <div className="citizen-scene-person citizen-scene-citizen">
+              <div className="citizen-scene-head"><UserRound size={29} /></div>
+              <div className="citizen-scene-body"><i /><i /></div>
+              <span className="citizen-scene-caption">{t('Citoyen')}</span>
+              <div className="citizen-scene-phone">
+                <div className="citizen-phone-speaker" />
+                <Smartphone size={14} />
+                <small>{t('Ma demande')}</small>
+                <span className="citizen-phone-lines"><i /><i /><i /></span>
+                <b><Send size={10} />{t('Envoyer')}</b>
+              </div>
+              <div className="citizen-scene-received"><CheckCircle2 size={17} /><span><strong>{t('Demande reçue !')}</strong><small>{t('Votre dossier est validé')}</small></span></div>
+            </div>
+            <div className="citizen-request-flight"><FileText size={15} /><span>{t('Dossier')}</span></div>
+            <div className="citizen-response-flight"><Check size={15} /></div>
+            <div className="citizen-scene-person citizen-scene-admin">
+              <div className="citizen-scene-head admin-head"><UserRound size={29} /></div>
+              <div className="citizen-scene-body admin-body"><i /><i /></div>
+              <span className="citizen-scene-caption">{t('Administration')}</span>
+              <div className="citizen-admin-desk">
+                <div className="citizen-admin-screen">
+                  <span><ClipboardCheck size={16} /><b>{t('Dossier citoyen')}</b></span>
+                  <i /><i />
+                  <div className="citizen-admin-approved"><Check size={12} />{t('Accepté')}</div>
+                </div>
+              </div>
+            </div>
+            <div className="citizen-scene-ground" />
+          </div>
+          <div className="citizen-journey-footer">
+            <span>{t('Envoyez votre demande, suivez sa validation et recevez la confirmation en ligne.')}</span>
+            <NavLink to="/front/demandes" className="text-link">{t('Commencer une démarche')} <ArrowRight size={15} /></NavLink>
+          </div>
+        </div>
+
+        <div className="panel citizen-services-panel">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <h3 style={{ margin: 0 }}>{t('Services disponibles')}</h3>
             <NavLink to="/front/demandes" className="text-link">{t('Voir tout')}</NavLink>
@@ -82,26 +130,6 @@ export function CitizenDashboardPage() {
                 <div className="citizen-service-card" key={service.id}>
                   <strong>{language === 'mg' ? service.nameMg : service.nameFr}</strong>
                   <small>{service.code}</small>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="panel" style={{ padding: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <h3 style={{ margin: 0 }}>{t('Suivi rapide')}</h3>
-            <NavLink to="/front/demandes" className="text-link">{t('Mes demandes le plus recent')}</NavLink>
-          </div>
-          {loadingRequests ? <p>{t('Chargement…')}</p> : (
-            <div style={{ display: 'grid', gap: 10 }}>
-              {(requests ?? []).slice(0, 4).map((request) => (
-                <div key={request.id} style={{ border: '1px solid #dfe7ef', borderRadius: 12, padding: 12, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <div>
-                    <strong>{request.title ?? request.type}</strong>
-                    <div style={{ fontSize: 12, color: '#54657a' }}>{language === 'mg' ? request.service?.nameMg ?? t(request.type) : request.service?.nameFr ?? t(request.type)}</div>
-                  </div>
-                  <span className="status en_traitement" style={{ whiteSpace: 'nowrap' }}>{t(statusLabels[request.status] ?? request.status.replace(/_/g, ' ').toLowerCase())}</span>
                 </div>
               ))}
             </div>
