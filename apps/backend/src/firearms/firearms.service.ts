@@ -8,7 +8,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { FirearmPermitStatus, FirearmPermitType, FirearmRequestStatus, FirearmRequestType, Prisma } from '@prisma/client';
+import { FirearmPermitStatus, FirearmPermitType, FirearmRequestStatus, FirearmRequestType, PaymentProvider, Prisma } from '@prisma/client';
 import PDFDocument = require('pdfkit');
 import { createReadStream, existsSync } from 'node:fs';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -37,6 +37,7 @@ const firearmFees: Record<FirearmRequestType, number> = {
   DEREGISTER_FIREARM: 10000,
   TRANSFER_FIREARM: 15000,
 };
+const SIMULATED_PAYMENT_PIN = '1234';
 
 const requestTypeLabels: Record<FirearmRequestType, string> = {
   HOLDING_PERMIT: 'Permis de détention',
@@ -114,12 +115,51 @@ export class FirearmsService implements OnModuleInit, OnModuleDestroy {
     })));
   }
 
-  async createRequest(userId: string, rawType: string, data: FirearmInput, files: IncomingFile[]) {
+  async listFees() {
+    const settings = await this.prisma.platformSetting.findMany({ where: { key: { startsWith: 'fee.FIREARM_' } } });
+    const configuredFees = new Map(settings.map(({ key, value }) => [key.slice('fee.FIREARM_'.length), Number(value)]));
+    const fees = Object.fromEntries(Object.entries(firearmFees).map(([type, fallback]) => [
+      type,
+      configuredFees.get(type) ?? fallback,
+    ])) as Record<FirearmRequestType, number>;
+    if (Object.values(fees).some((fee) => !Number.isFinite(fee) || fee < 0)) {
+      throw new BadRequestException('Un tarif de contrôle des armements est invalide');
+    }
+    return fees;
+  }
+
+  async createRequest(
+    userId: string,
+    rawType: string,
+    data: FirearmInput,
+    files: IncomingFile[],
+    payment: { confirmedAmount?: number; provider?: string; phone?: string; simulationPin?: string },
+  ) {
     if (!userId) throw new ForbiddenException('Utilisateur non authentifié');
     if (!Object.values(FirearmRequestType).includes(rawType as FirearmRequestType)) {
       throw new BadRequestException('Type de demande de contrôle des armements invalide');
     }
     const type = rawType as FirearmRequestType;
+    const fees = await this.listFees();
+    const fee = fees[type];
+    if (payment.confirmedAmount !== fee) {
+      throw new BadRequestException('Le tarif a changé. Vérifiez le montant avant de confirmer à nouveau.');
+    }
+    if (!Object.values(PaymentProvider).includes(payment.provider as PaymentProvider)) {
+      throw new BadRequestException('Sélectionnez un opérateur de paiement valide');
+    }
+    if (payment.simulationPin !== SIMULATED_PAYMENT_PIN) {
+      throw new BadRequestException('Code PIN de simulation incorrect. Utilisez le code de démonstration affiché.');
+    }
+    const provider = payment.provider as PaymentProvider;
+    const prefixes: Partial<Record<PaymentProvider, string[]>> = {
+      MVOLA: ['034', '038', '036'],
+      AIRTEL_MONEY: ['033', '035'],
+      ORANGE_MONEY: ['032', '037'],
+    };
+    if (!/^\d{10}$/.test(payment.phone ?? '') || !prefixes[provider]?.some((prefix) => payment.phone?.startsWith(prefix))) {
+      throw new BadRequestException('Le numéro doit contenir 10 chiffres et correspondre à l’opérateur sélectionné');
+    }
     if (files.length === 0) throw new BadRequestException('Ajoutez au moins une pièce justificative à la demande');
     for (const file of files) {
       if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimetype ?? '') || (file.size ?? 0) > 10 * 1024 * 1024) {
@@ -174,7 +214,7 @@ export class FirearmsService implements OnModuleInit, OnModuleDestroy {
           userId,
           firearmId,
           type,
-          data: { ...requestData, fee: firearmFees[type], paymentStatus: 'SIMULATED' } as Prisma.InputJsonValue,
+          data: { ...requestData, fee, paymentStatus: 'SIMULATED', paymentProvider: provider } as Prisma.InputJsonValue,
           attachments: {
             create: files.map((file) => ({
               label: file.label.trim(),

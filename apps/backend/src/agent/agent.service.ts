@@ -100,8 +100,8 @@ export class AgentService {
     }).formatToParts(new Date());
     const localYear = Number(localMonthParts.find((part) => part.type === 'year')?.value);
     const localMonth = Number(localMonthParts.find((part) => part.type === 'month')?.value);
-    const currentLocalMonthStart = new Date(Date.UTC(localYear, localMonth - 1, 1));
-    const monthlyStart = new Date(currentLocalMonthStart.getTime() - 3 * 60 * 60 * 1000);
+    const firstDisplayedMonthStart = new Date(Date.UTC(localYear, localMonth - 6, 1));
+    const monthlyStart = new Date(firstDisplayedMonthStart.getTime() - 3 * 60 * 60 * 1000);
 
     const [total, pending, approved, rejected, totalUsers, citizens, administrators, activeUsers, monthlyRequests, monthlyUsers, paymentBalance] = await Promise.all([
       this.prisma.serviceRequest.count(),

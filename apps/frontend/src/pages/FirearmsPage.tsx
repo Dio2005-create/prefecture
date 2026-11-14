@@ -28,6 +28,12 @@ const statusLabels: Record<string, string> = {
   REPLACED: 'Remplacé',
 };
 const PAGE_SIZE = 5;
+type MobileMoneyProvider = 'MVOLA' | 'AIRTEL_MONEY' | 'ORANGE_MONEY';
+const mobileMoneyPrefixes: Record<MobileMoneyProvider, string[]> = {
+  MVOLA: ['034', '038', '036'],
+  AIRTEL_MONEY: ['033', '035'],
+  ORANGE_MONEY: ['032', '037'],
+};
 
 function errorMessage(error: unknown) {
   if (axios.isAxiosError(error)) {
@@ -55,8 +61,13 @@ export function FirearmsPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentProvider, setPaymentProvider] = useState<MobileMoneyProvider>('MVOLA');
+  const [paymentPhone, setPaymentPhone] = useState('');
+  const [paymentPin, setPaymentPin] = useState('');
   const [firearmPage, setFirearmPage] = useState(1);
   const [requestPage, setRequestPage] = useState(1);
+  const [requestTypeFilter, setRequestTypeFilter] = useState<'ALL' | FirearmRequestType>('ALL');
   const { data: firearms = [], isLoading: loadingFirearms, isError: firearmsError } = useQuery({
     queryKey: ['firearms-mine'],
     queryFn: firearmsService.listMine,
@@ -69,21 +80,24 @@ export function FirearmsPage() {
     queryKey: ['firearms-my-requests'],
     queryFn: firearmsService.listMyRequests,
   });
-  const firearmFees: Record<FirearmRequestType, number> = {
-    HOLDING_PERMIT: 25000,
-    CARRY_PERMIT: 35000,
-    REGISTER_FIREARM: 20000,
-    RENEW_PERMIT: 20000,
-    DEREGISTER_FIREARM: 10000,
-    TRANSFER_FIREARM: 15000,
-  };
+  const { data: firearmFees = {}, isLoading: loadingFees, isError: feesError } = useQuery({
+    queryKey: ['firearms-fees'],
+    queryFn: firearmsService.listFees,
+  });
+  const requestFee = firearmFees[type];
+  const paymentPhoneIsValid = /^\d{10}$/.test(paymentPhone) && mobileMoneyPrefixes[paymentProvider].some((prefix) => paymentPhone.startsWith(prefix));
   const mutation = useMutation({
-    mutationFn: () => firearmsService.createRequest({ type, data, files }),
+    mutationFn: () => firearmsService.createRequest({
+      type, data, files, confirmedAmount: requestFee!, paymentProvider, paymentPhone, simulationPin: paymentPin,
+    }),
     onSuccess: async () => {
       setData({});
       setFiles([]);
       setFormError('');
       setFormSuccess('Votre demande a été transmise à l’administration.');
+      setPaymentModalOpen(false);
+      setPaymentPhone('');
+      setPaymentPin('');
       const input = document.getElementById('firearms-supporting-files') as HTMLInputElement | null;
       if (input) input.value = '';
       await Promise.all([
@@ -99,7 +113,8 @@ export function FirearmsPage() {
   const activeFirearms = useMemo(() => firearms.filter((firearm) => firearm.isActive), [firearms]);
   const availablePermits = useMemo(() => permits.filter((permit) => permit.status === 'ACTIVE' || permit.status === 'EXPIRED'), [permits]);
   const visibleFirearms = firearms.slice((firearmPage - 1) * PAGE_SIZE, firearmPage * PAGE_SIZE);
-  const visibleRequests = requests.slice((requestPage - 1) * PAGE_SIZE, requestPage * PAGE_SIZE);
+  const filteredRequests = requestTypeFilter === 'ALL' ? requests : requests.filter((request) => request.type === requestTypeFilter);
+  const visibleRequests = filteredRequests.slice((requestPage - 1) * PAGE_SIZE, requestPage * PAGE_SIZE);
 
   const updateField = (key: string, value: string) => setData((previous) => ({ ...previous, [key]: value }));
   const changeType = (next: FirearmRequestType) => {
@@ -107,6 +122,8 @@ export function FirearmsPage() {
     setData({});
     setFormError('');
     setFormSuccess('');
+    setPaymentPhone('');
+    setPaymentPin('');
   };
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -116,6 +133,22 @@ export function FirearmsPage() {
       setFormError('Ajoutez au moins un document justificatif.');
       return;
     }
+    if (loadingFees || feesError || requestFee === undefined || !Number.isFinite(requestFee)) {
+      setFormError('Le tarif est indisponible. Actualisez la page avant de réessayer.');
+      return;
+    }
+    setPaymentModalOpen(true);
+  };
+  const confirmSimulatedPayment = () => {
+    if (!paymentPhoneIsValid) {
+      setFormError('Le numéro doit contenir 10 chiffres et respecter le préfixe de l’opérateur choisi.');
+      return;
+    }
+    if (paymentPin !== '1234') {
+      setFormError('PIN incorrect : utilisez le code de démonstration 1234.');
+      return;
+    }
+    setFormError('');
     mutation.mutate();
   };
   const download = async (requestId: string, attachmentId: string, filename: string) => {
@@ -154,7 +187,6 @@ export function FirearmsPage() {
           </select>
         </label>
 
-        <p className="firearms-message" style={{ marginBottom: 0 }}><strong>Frais simulés : {firearmFees[type].toLocaleString('fr-FR')} Ar</strong></p>
         {type === 'REGISTER_FIREARM' && <div className="firearms-form-grid">
           <label>{t('Type d’arme')}<input required maxLength={80} value={data.weaponType ?? ''} onChange={(event) => updateField('weaponType', event.target.value)} placeholder={t('Ex. fusil, pistolet')} /></label>
           <label>{t('Marque')}<input required maxLength={100} value={data.brand ?? ''} onChange={(event) => updateField('brand', event.target.value)} /></label>
@@ -209,10 +241,18 @@ export function FirearmsPage() {
         <div><p className="eyebrow">{t('Suivi')}</p><h2>{t('Mes demandes')}</h2></div>
         <button className="button" type="button" onClick={() => void refetch()} disabled={isFetching}><RefreshCw size={15} />{t('Actualiser')}</button>
       </div>
-      {loadingRequests ? <p>{t('Chargement…')}</p> : requestsError ? <p className="firearms-message is-error" role="alert">{t('Impossible de charger vos demandes. Réessayez.')}</p> : requests.length === 0 ? <p className="firearms-empty">{t('Vous n’avez pas encore soumis de demande.')}</p> : <><div className="firearms-list">
+      {!loadingRequests && !requestsError && requests.length > 0 && <div className="filter-tabs" role="group" aria-label={t('Filtrer les demandes par type')}>
+        <button type="button" className={requestTypeFilter === 'ALL' ? 'active' : ''} onClick={() => { setRequestTypeFilter('ALL'); setRequestPage(1); }}>{t('Toutes')} ({requests.length})</button>
+        {(Object.entries(requestLabels) as Array<[FirearmRequestType, string]>).map(([requestType, label]) => {
+          const count = requests.filter((request) => request.type === requestType).length;
+          return <button type="button" key={requestType} className={requestTypeFilter === requestType ? 'active' : ''} onClick={() => { setRequestTypeFilter(requestType); setRequestPage(1); }}>{t(label)} ({count})</button>;
+        })}
+      </div>}
+      {loadingRequests ? <p>{t('Chargement…')}</p> : requestsError ? <p className="firearms-message is-error" role="alert">{t('Impossible de charger vos demandes. Réessayez.')}</p> : requests.length === 0 ? <p className="firearms-empty">{t('Vous n’avez pas encore soumis de demande.')}</p> : filteredRequests.length === 0 ? <p className="firearms-empty">{t('Aucune demande pour ce type.')}</p> : <><div className="firearms-list">
         {visibleRequests.map((request) => <article className="firearms-item" key={request.id}>
           <div className="firearms-item-heading"><div><h3>{t(requestLabels[request.type])}</h3><p>{t('Soumise le')} {new Date(request.createdAt).toLocaleString()}</p></div><span className={`firearms-badge status-${request.status.toLowerCase()}`}>{t(statusLabels[request.status] ?? request.status)}</span></div>
           {request.firearm && <p>{request.firearm.brand} {request.firearm.model} · {t('N° de série')} {request.firearm.serialNumber}</p>}
+          {request.data.paymentStatus === 'SIMULATED' && typeof request.data.fee === 'number' && <p>{t('Paiement simulé')}: {request.data.fee.toLocaleString('fr-FR')} Ar</p>}
           {request.decisionComment && <p className="firearms-decision-comment">{t('Commentaire de l’administration')}: {request.decisionComment}</p>}
           <div className="firearms-request-actions">
             {request.status === 'APPROVED' && <button className="button primary" type="button" onClick={() => void downloadOfficial(request.id)}><Download size={15} />{t('Télécharger le document officiel')}</button>}
@@ -220,7 +260,26 @@ export function FirearmsPage() {
           </div>
           {request.history?.length ? <details className="firearms-history"><summary>{t('Historique de traitement')}</summary><ol>{request.history.map((entry, index) => <li key={`${entry.action}-${index}`}><strong>{t(statusLabels[entry.action.replace('REQUEST_', '')] ?? entry.action.replace(/_/g, ' '))}</strong><span>{new Date(entry.createdAt).toLocaleString()}</span>{typeof entry.details.comment === 'string' && entry.details.comment && <p>{entry.details.comment}</p>}</li>)}</ol></details> : null}
         </article>)}
-      </div><Pagination page={Math.min(requestPage, Math.max(1, Math.ceil(requests.length / PAGE_SIZE)))} totalPages={Math.max(1, Math.ceil(requests.length / PAGE_SIZE))} onChange={setRequestPage} /></>}
+      </div><Pagination page={Math.min(requestPage, Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE)))} totalPages={Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE))} onChange={setRequestPage} /></>}
     </section>
+    {paymentModalOpen && requestFee !== undefined && <div className="modal-backdrop payment-backdrop" role="presentation">
+      <section className="confirm-modal payment-modal" role="dialog" aria-modal="true" aria-labelledby="firearm-payment-title">
+        <p className="eyebrow">{t('Étape de paiement')}</p>
+        <h2 id="firearm-payment-title">{t('Confirmer le paiement')}</h2>
+        <p>{t(requestLabels[type])} · {requestFee.toLocaleString('fr-FR')} Ar</p>
+        <p className="payment-demo-notice">{t('Mode démonstration : aucun débit réel n’est effectué. PIN de test : 1234. Le dossier est transmis après validation.')}</p>
+        <div className="payment-fields">
+          <label className="request-field">{t('Opérateur')}<select value={paymentProvider} onChange={(event) => { setPaymentProvider(event.target.value as MobileMoneyProvider); setPaymentPhone(''); setPaymentPin(''); }}><option value="MVOLA">MVola</option><option value="AIRTEL_MONEY">Airtel Money</option><option value="ORANGE_MONEY">Orange Money</option></select></label>
+          <label className="request-field">{t('Numéro du citoyen (10 chiffres)')}<input type="tel" inputMode="numeric" autoComplete="tel-national" value={paymentPhone} maxLength={10} placeholder={paymentProvider === 'MVOLA' ? '0340000000' : paymentProvider === 'AIRTEL_MONEY' ? '0330000000' : '0320000000'} onChange={(event) => setPaymentPhone(event.target.value.replace(/\D/g, '').slice(0, 10))} />{paymentPhone && !paymentPhoneIsValid && <small className="field-warning">{t('Le numéro doit contenir 10 chiffres et respecter le préfixe de l’opérateur choisi.')}</small>}</label>
+          <label className="request-field">{t('Code PIN de simulation (4 chiffres)')}<input type="password" inputMode="numeric" autoComplete="one-time-code" value={paymentPin} maxLength={4} onChange={(event) => setPaymentPin(event.target.value.replace(/\D/g, '').slice(0, 4))} />{paymentPin && paymentPin !== '1234' && <small className="field-warning">{t('PIN incorrect : utilisez le code de démonstration 1234.')}</small>}</label>
+          <small className="form-hint">{t('Préfixes autorisés :')} {paymentProvider === 'MVOLA' ? '034, 038 ou 036' : paymentProvider === 'AIRTEL_MONEY' ? '033 ou 035' : '032 ou 037'}.</small>
+        </div>
+        {formError && <p className="error-message" role="alert">{t(formError)}</p>}
+        <div className="modal-actions">
+          <button className="button" type="button" disabled={mutation.isPending} onClick={() => { setPaymentModalOpen(false); setFormError(''); }}>{t('Annuler')}</button>
+          <button className="button primary" type="button" disabled={!paymentPhoneIsValid || paymentPin !== '1234' || mutation.isPending} onClick={confirmSimulatedPayment}>{t(mutation.isPending ? 'Confirmation...' : 'Valider le paiement')}</button>
+        </div>
+      </section>
+    </div>}
   </section>;
 }

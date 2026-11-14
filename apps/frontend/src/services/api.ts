@@ -103,6 +103,7 @@ export const prefectureService = {
 export const notificationService = {
   list: async () => (await api.get<NotificationItem[]>('/notifications')).data,
   markAsRead: async (id: string) => (await api.patch(`/notifications/${id}/read`)).data,
+  markAllAsRead: async () => (await api.patch('/notifications/read-all')).data,
 };
 
 export const complaintService = {
@@ -127,14 +128,19 @@ export const complaintService = {
 };
 
 export const firearmsService = {
+  listFees: async () => (await api.get<Partial<Record<FirearmRequestType, number>>>('/firearms/fees')).data,
   listMine: async () => (await api.get<FirearmRecord[]>('/firearms')).data,
   listMyPermits: async () => (await api.get<FirearmPermitRecord[]>('/firearms/permits')).data,
   listMyRequests: async () => (await api.get<FirearmRequestRecord[]>('/firearms/requests')).data,
-  createRequest: async (payload: { type: FirearmRequestType; data: Record<string, string>; files: File[] }) => {
+  createRequest: async (payload: { type: FirearmRequestType; data: Record<string, string>; files: File[]; confirmedAmount: number; paymentProvider: 'MVOLA' | 'AIRTEL_MONEY' | 'ORANGE_MONEY'; paymentPhone: string; simulationPin: string }) => {
     const form = new FormData();
     form.append('type', payload.type);
     form.append('data', JSON.stringify(payload.data));
     form.append('attachmentLabels', JSON.stringify(payload.files.map((_, index) => `Justificatif ${index + 1}`)));
+    form.append('confirmedAmount', String(payload.confirmedAmount));
+    form.append('paymentProvider', payload.paymentProvider);
+    form.append('paymentPhone', payload.paymentPhone);
+    form.append('simulationPin', payload.simulationPin);
     payload.files.forEach((file) => form.append('attachments', file));
     return (await api.post<FirearmRequestRecord>('/firearms/requests', form)).data;
   },

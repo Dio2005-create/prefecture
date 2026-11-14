@@ -29,6 +29,11 @@ export class FirearmsController {
     return this.firearms.listCitizenRequests(req.user?.id ?? '');
   }
 
+  @Get('fees')
+  listFees() {
+    return this.firearms.listFees();
+  }
+
   @Post('requests')
   @UseInterceptors(FilesInterceptor('attachments', 15, {
     dest: process.env.UPLOAD_DIR ?? './uploads',
@@ -36,7 +41,7 @@ export class FirearmsController {
   }))
   createRequest(
     @Req() req: AuthenticatedRequest,
-    @Body() body: { type?: string; data?: string; attachmentLabels?: string },
+    @Body() body: { type?: string; data?: string; attachmentLabels?: string; confirmedAmount?: string; paymentProvider?: string; paymentPhone?: string; simulationPin?: string },
     @UploadedFiles() files: UploadedFile[],
   ) {
     if (!req.user) throw new BadRequestException('Utilisateur non authentifié');
@@ -53,10 +58,18 @@ export class FirearmsController {
     if (!Array.isArray(labels) || labels.some((label) => typeof label !== 'string')) {
       throw new BadRequestException('Les catégories des pièces jointes sont invalides');
     }
-    return this.firearms.createRequest(req.user.id, body.type ?? '', data, (files ?? []).map((file, index) => ({
-      ...file,
-      label: labels[index] ?? 'Justificatif',
-    })));
+    return this.firearms.createRequest(
+      req.user.id,
+      body.type ?? '',
+      data,
+      (files ?? []).map((file, index) => ({ ...file, label: labels[index] ?? 'Justificatif' })),
+      {
+        confirmedAmount: body.confirmedAmount === undefined ? undefined : Number(body.confirmedAmount),
+        provider: body.paymentProvider,
+        phone: body.paymentPhone,
+        simulationPin: body.simulationPin,
+      },
+    );
   }
 
   @Get('requests/:id/attachments/:attachmentId')

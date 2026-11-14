@@ -70,7 +70,7 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
     if (action === 'approve') {
       onApprove(
         request.id,
-        input.trim(),
+        input.trim() || undefined,
         isCinRequest && request.status === 'IN_REVIEW' ? selectedAppointmentSlot : undefined,
         isResidenceApproval ? certificateAdministration : undefined,
       );
@@ -121,7 +121,10 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
           {terminalStatuses.has(request.status) || hasScheduledCinAppointment ? <small className="muted">{t(hasScheduledCinAppointment ? 'En attente de la prise des empreintes pour valider la demande.' : 'Actions indisponibles : dossier déjà traité.')}</small> : <div className="request-card-actions">
           <button
             className="button small"
-            onClick={() => setAction('approve')}
+            onClick={() => {
+              if ((isCinRequest && request.status === 'IN_REVIEW') || isResidenceApproval) setAction('approve');
+              else onApprove(request.id);
+            }}
             disabled={isLoading}
             style={{ backgroundColor: '#2f7d5b', color: '#fff' }}
           >
@@ -176,21 +179,8 @@ function RequestCard({ request, onApprove, onReject, onRequestInfo, onEdit, isLo
                     <input required value={certificateAdministration.issueLocation} onChange={(event) => setCertificateAdministration((current) => ({ ...current, issueLocation: event.target.value }))} />
                   </label>
                 </div>
-                <label style={{ display: 'block', marginBottom: 8 }}>
-                  <small style={{ fontWeight: 500 }}>{t("Notes d'approbation (optionnel)")}</small>
-                  <textarea value={input} onChange={(event) => setInput(event.target.value)} placeholder={t('Notes...')} rows={2} style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid var(--color-border)', fontSize: '0.9rem' }} />
-                </label>
               </> : <>
-                <label style={{ display: 'block', marginBottom: 8 }}>
-                  <small style={{ fontWeight: 500 }}>{t("Notes d'approbation (optionnel)")}</small>
-                </label>
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder={t('Notes...')}
-                  style={{ width: '100%', padding: 8, borderRadius: 4, border: '1px solid var(--color-border)', fontSize: '0.9rem' }}
-                  rows={2}
-                />
+                <p>{t('Le dossier sera validé directement.')}</p>
               </>}
               <div className="request-action-footer">
                 <button className="button request-cancel-button" onClick={() => setAction(null)}>
