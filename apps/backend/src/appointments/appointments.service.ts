@@ -1,4 +1,13 @@
-import { ConflictException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { AppointmentStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import PDFDocument = require('pdfkit');
@@ -12,8 +21,56 @@ import { getRequestCompleteness } from '../requests/request-requirements';
 import { normalizeOfficialMark } from '../agent/official-mark-image';
 
 @Injectable()
-export class AppointmentsService {
+export class AppointmentsService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(AppointmentsService.name);
+  private pendingAppointmentTimer?: NodeJS.Timeout;
+
   constructor(private readonly prisma: PrismaService, private readonly notifications: NotificationsService) {}
+
+  onModuleInit() {
+    void this.cancelUnconfirmedAppointments().catch((error: unknown) => {
+      this.logger.error('Échec de l’annulation des rendez-vous non confirmés', error instanceof Error ? error.stack : String(error));
+    });
+    this.pendingAppointmentTimer = setInterval(() => {
+      void this.cancelUnconfirmedAppointments().catch((error: unknown) => {
+        this.logger.error('Échec de l’annulation des rendez-vous non confirmés', error instanceof Error ? error.stack : String(error));
+      });
+    }, 60 * 1000);
+    this.pendingAppointmentTimer.unref();
+  }
+
+  onModuleDestroy() {
+    if (this.pendingAppointmentTimer) clearInterval(this.pendingAppointmentTimer);
+  }
+
+  private async cancelUnconfirmedAppointments() {
+    const deadline = new Date(Date.now() + 10 * 60 * 1000);
+    const pendingAppointments = await this.prisma.appointment.findMany({
+      where: { status: AppointmentStatus.PENDING, startsAt: { lte: deadline } },
+      select: { id: true },
+    });
+
+    for (const { id } of pendingAppointments) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Appointment" WHERE "id" = ${id} FOR UPDATE`;
+        const appointment = await tx.appointment.findUnique({ where: { id } });
+        if (!appointment || appointment.status !== AppointmentStatus.PENDING || appointment.startsAt > deadline) return;
+
+        await tx.appointment.update({
+          where: { id },
+          data: { status: AppointmentStatus.CANCELLED },
+        });
+        await tx.notification.create({
+          data: {
+            userId: appointment.userId,
+            title: 'Rendez-vous annulé automatiquement',
+            message: `Votre rendez-vous prévu le ${appointment.startsAt.toLocaleString('fr-FR', { timeZone: 'Indian/Antananarivo' })} à ${appointment.office} a été annulé automatiquement, car il n’avait pas été confirmé par l’administration au moins 10 minutes avant l’heure prévue.`,
+            channel: 'PUSH',
+          },
+        });
+      });
+    }
+  }
 
   async listAvailable(date?: string) {
     const now = new Date();
@@ -490,15 +547,20 @@ export class AppointmentsService {
   }
 
   async updateStatus(id: string, status: AppointmentStatus) {
-    const appointment = await this.prisma.appointment.findUnique({ where: { id } });
-    if (!appointment) throw new NotFoundException('Rendez-vous introuvable');
-    if (appointment.status === AppointmentStatus.CANCELLED || appointment.status === AppointmentStatus.COMPLETED) {
-      throw new ConflictException('Ce rendez-vous ne peut plus être modifié');
-    }
-    if (status === AppointmentStatus.COMPLETED && appointment.endsAt > new Date()) {
-      throw new ConflictException('Le rendez-vous ne peut être terminé qu’après son horaire de fin');
-    }
     const result = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Appointment" WHERE "id" = ${id} FOR UPDATE`;
+      const appointment = await tx.appointment.findUnique({ where: { id } });
+      if (!appointment) throw new NotFoundException('Rendez-vous introuvable');
+      if (appointment.status === AppointmentStatus.CANCELLED || appointment.status === AppointmentStatus.COMPLETED) {
+        throw new ConflictException('Ce rendez-vous ne peut plus être modifié');
+      }
+      if (status === AppointmentStatus.BOOKED && appointment.status === AppointmentStatus.PENDING &&
+          appointment.startsAt.getTime() <= Date.now() + 10 * 60 * 1000) {
+        throw new ConflictException('Ce rendez-vous ne peut plus être confirmé moins de 10 minutes avant son horaire');
+      }
+      if (status === AppointmentStatus.COMPLETED && appointment.endsAt > new Date()) {
+        throw new ConflictException('Le rendez-vous ne peut être terminé qu’après son horaire de fin');
+      }
       const updatedAppointment = await tx.appointment.update({ where: { id }, data: { status } });
       let completedCinRequest: { id: string; userId: string } | undefined;
       let reopenedCinRequest: { id: string; userId: string } | undefined;
@@ -528,13 +590,13 @@ export class AppointmentsService {
           reopenedCinRequest = { id: request.id, userId: request.userId };
         }
       }
-      return { appointment: updatedAppointment, completedCinRequest, reopenedCinRequest };
+      return { appointment: updatedAppointment, previousAppointment: appointment, completedCinRequest, reopenedCinRequest };
     });
-    if (status === AppointmentStatus.BOOKED && appointment.status !== AppointmentStatus.BOOKED) {
+    if (status === AppointmentStatus.BOOKED && result.previousAppointment.status !== AppointmentStatus.BOOKED) {
       await this.notifications.createForUser(
-        appointment.userId,
+        result.previousAppointment.userId,
         'Rendez-vous confirmé',
-        `Votre rendez-vous du ${appointment.startsAt.toLocaleString('fr-FR', { timeZone: 'Indian/Antananarivo' })} à ${appointment.office} est confirmé. Téléchargez votre ticket depuis la rubrique « Mes rendez-vous ».`,
+        `Votre rendez-vous du ${result.previousAppointment.startsAt.toLocaleString('fr-FR', { timeZone: 'Indian/Antananarivo' })} à ${result.previousAppointment.office} est confirmé. Téléchargez votre ticket depuis la rubrique « Mes rendez-vous ».`,
       );
     }
     if (result.completedCinRequest) {

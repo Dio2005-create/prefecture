@@ -15,3 +15,4 @@
 13. Une demande IA s'appuie sur les documents indexés et les règles des 18 démarches.
 14. Une session expire après cinq minutes d'inactivité; un rafraîchissement seul ne doit pas déconnecter l'utilisateur.
 15. Les signatures et cachets sont placés en bas à droite des documents générés.
+16. Une réservation citoyenne non confirmée par l'administration est automatiquement annulée 10 minutes avant l'heure prévue, avec notification du citoyen.
