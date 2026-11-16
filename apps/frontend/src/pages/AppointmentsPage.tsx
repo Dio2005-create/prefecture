@@ -3,8 +3,17 @@ import axios from 'axios';
 import { CalendarDays, Download } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { appointmentService } from '../services/api';
-import { Pagination } from '../components/ui';
+import { Pagination, Toast, useToast } from '../components/ui';
 import { usePreferences } from '../preferences';
+
+function getAppointmentErrorMessage(error: unknown, fallback: string) {
+  if (axios.isAxiosError(error)) {
+    const message = (error.response?.data as { message?: string | string[] } | undefined)?.message;
+    if (Array.isArray(message)) return message.join(', ');
+    if (message) return message;
+  }
+  return fallback;
+}
 
 const appointmentStatusLabels: Record<string, string> = {
   PENDING: 'En attente de confirmation',
@@ -25,6 +34,7 @@ type AvailableSlot = { id: string; startsAt: string; endsAt: string; office: str
 
 export function AppointmentsPage() {
   const { t, language } = usePreferences();
+  const { toast, notify } = useToast();
   const client = useQueryClient();
   const [appointmentDate, setAppointmentDate] = useState('');
   const [selectedSlotId, setSelectedSlotId] = useState('');
@@ -49,26 +59,26 @@ export function AppointmentsPage() {
   const booking = useMutation({
     mutationFn: () => appointmentService.book({ slotId: selectedSlotId, notes }),
     onSuccess: () => {
+      notify('success', 'Créneau réservé avec succès.');
       setSelectedSlotId('');
       setNotes('');
       void client.invalidateQueries({ queryKey: ['appointments'] });
       void client.invalidateQueries({ queryKey: ['appointments', 'available', appointmentDate] });
     },
+    onError: (error) => notify('error', getAppointmentErrorMessage(error, 'Impossible de réserver ce créneau.')),
   });
   const cancellation = useMutation({
     mutationFn: appointmentService.cancel,
     onSuccess: () => {
+      notify('success', 'Rendez-vous annulé avec succès.');
       setCancelTarget(null);
       void client.invalidateQueries({ queryKey: ['appointments'] });
       void client.invalidateQueries({ queryKey: ['appointments', 'available', appointmentDate] });
     },
+    onError: (error) => notify('error', getAppointmentErrorMessage(error, 'Impossible d’annuler ce rendez-vous.')),
   });
-  const bookingError = booking.error && axios.isAxiosError(booking.error)
-    ? (booking.error.response?.data as { message?: string } | undefined)?.message ?? 'Impossible de reserver ce creneau.'
-    : booking.error ? 'Impossible de reserver ce creneau.' : '';
   const visibleAppointments = appointments.slice((appointmentPage - 1) * 5, appointmentPage * 5);
   const handleDownloadTicket = async (id: string) => {
-    setTicketError('');
     try {
       const { pdf, filename } = await appointmentService.downloadTicket(id);
       const url = URL.createObjectURL(pdf);
@@ -77,8 +87,9 @@ export function AppointmentsPage() {
       link.download = filename;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {
-      setTicketError('Le ticket ne peut pas être téléchargé. Réessayez.');
+      notify('success', 'Ticket téléchargé avec succès.');
+    } catch (error) {
+      notify('error', getAppointmentErrorMessage(error, 'Le ticket ne peut pas être téléchargé. Réessayez.'));
     }
   };
 
@@ -101,15 +112,14 @@ export function AppointmentsPage() {
           <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} maxLength={500} />
         </label>
         <button className="button primary" disabled={!selectedSlotId || booking.isPending} onClick={() => booking.mutate()}><CalendarDays size={17} />{t(booking.isPending ? 'Reservation...' : 'Reserver le creneau')}</button>
-        {bookingError && <p className="error-message">{t(bookingError)}</p>}
       </div>
       <h2>{t('Historique')}</h2>
-      {ticketError && <p className="error-message" role="alert">{t(ticketError)}</p>}
       {isLoading ? <p>{t('Chargement...')}</p> : appointments.length === 0 ? <p>{t('Aucun rendez-vous reserve.')}</p> : <div className="appointment-list">
         {visibleAppointments.map((appointment) => <div className="recent-row" key={appointment.id}><CalendarDays size={18} /><span><strong>{new Date(appointment.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })}</strong><small>{appointment.ticketReference ? `${appointment.ticketReference} · ` : ''}{appointment.office} · {t(appointmentStatusLabels[appointment.status] ?? appointment.status.replace(/_/g, ' ').toLowerCase())}</small></span>{(appointment.status === 'BOOKED' || appointment.status === 'COMPLETED') && <button className="button small" type="button" onClick={() => void handleDownloadTicket(appointment.id)}><Download size={14} />{t('Télécharger le ticket')}</button>}{appointment.status === 'PENDING' || appointment.status === 'BOOKED' ? <button className="button small appointment-reject" onClick={() => setCancelTarget(appointment.id)}>{t('Annuler')}</button> : null}</div>)}
         <Pagination page={appointmentPage} totalPages={Math.max(1, Math.ceil(appointments.length / 5))} onChange={setAppointmentPage} />
       </div>}
       {cancelTarget && <div className="modal-backdrop" role="presentation"><section className="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="cancel-appointment-title"><p className="eyebrow">{t('Rendez-vous')}</p><h2 id="cancel-appointment-title">{t('Annuler ce rendez-vous ?')}</h2><p>{t('Le creneau sera libere pour un autre citoyen.')}</p><div className="modal-actions"><button className="button" onClick={() => setCancelTarget(null)}>{t('Retour')}</button><button className="button appointment-reject" disabled={cancellation.isPending} onClick={() => cancellation.mutate(cancelTarget)}>{t("Confirmer l'annulation")}</button></div></section></div>}
+      <Toast toast={toast} />
     </section>
   );
 }

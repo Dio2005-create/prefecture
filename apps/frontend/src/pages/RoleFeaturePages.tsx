@@ -9,6 +9,15 @@ import { useAuth } from '../auth';
 import { usePreferences } from '../preferences';
 import { markCitizenDocumentsRead } from '../citizen-document-read';
 
+function getAppointmentErrorMessage(error: unknown, fallback: string) {
+  if (axios.isAxiosError(error)) {
+    const message = (error.response?.data as { message?: string | string[] } | undefined)?.message;
+    if (Array.isArray(message)) return message.join(', ');
+    if (message) return message;
+  }
+  return fallback;
+}
+
 export function CitizenDocumentsPage() {
   const { t, language } = usePreferences();
   const { data: requests = [], isLoading } = useQuery({ queryKey: ['citizen-requests'], queryFn: prefectureService.listRequests, refetchInterval: 3000 });
@@ -656,6 +665,7 @@ export function AdminPublicationsPage() {
 
 export function AdminAppointmentsPage() {
   const { t, language } = usePreferences();
+  const { toast, notify } = useToast();
   const client = useQueryClient();
   const { data: appointments = [], isLoading } = useQuery({ queryKey: ['admin-appointments'], queryFn: appointmentService.listForAdmin, refetchInterval: 3000 });
   const [appointmentPage, setAppointmentPage] = useState(1);
@@ -728,29 +738,45 @@ export function AdminAppointmentsPage() {
       office: slotOffice,
     }),
     onSuccess: () => {
+      notify('success', 'Créneaux enregistrés avec succès.');
+      setSlotDate('');
+      setSlotStart('');
+      setSlotEnd('');
+      setSlotDuration('');
+      setBreakStart('');
+      setBreakEnd('');
+      setSlotOffice('');
       void client.invalidateQueries({ queryKey: ['admin-appointment-slots'] });
       void client.invalidateQueries({ queryKey: ['admin-appointment-availability'] });
       void client.invalidateQueries({ queryKey: ['appointments', 'available'] });
+    },
+    onError: (error) => {
+      notify('error', getAppointmentErrorMessage(error, 'Impossible d’enregistrer les créneaux.'));
     },
   });
   const updateSlot = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) => appointmentService.updateSlot(id, isActive),
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
+      notify('success', variables.isActive ? 'Créneau activé avec succès.' : 'Créneau désactivé avec succès.');
       void client.invalidateQueries({ queryKey: ['admin-appointment-slots'] });
       void client.invalidateQueries({ queryKey: ['admin-appointment-availability'] });
       void client.invalidateQueries({ queryKey: ['appointments', 'available'] });
     },
+    onError: (error) => {
+      notify('error', getAppointmentErrorMessage(error, 'Impossible de modifier le créneau.'));
+    },
   });
-  const slotError = [createSlot.error, updateSlot.error].find(Boolean);
-  const slotErrorMessage = slotError && axios.isAxiosError(slotError)
-    ? (slotError.response?.data as { message?: string } | undefined)?.message ?? 'Impossible de modifier les créneaux.'
-    : slotError ? 'Impossible de modifier les créneaux.' : '';
   const update = async (id: string, status: 'BOOKED' | 'CANCELLED' | 'COMPLETED') => {
-    await appointmentService.updateStatus(id, status);
-    await client.invalidateQueries({ queryKey: ['admin-appointments'] });
-    await client.invalidateQueries({ queryKey: ['admin-navigation-appointments'] });
-    await client.invalidateQueries({ queryKey: ['admin-appointment-slots'] });
-    await client.invalidateQueries({ queryKey: ['appointments', 'available'] });
+    try {
+      await appointmentService.updateStatus(id, status);
+      await client.invalidateQueries({ queryKey: ['admin-appointments'] });
+      await client.invalidateQueries({ queryKey: ['admin-navigation-appointments'] });
+      await client.invalidateQueries({ queryKey: ['admin-appointment-slots'] });
+      await client.invalidateQueries({ queryKey: ['appointments', 'available'] });
+      notify('success', 'Rendez-vous mis à jour avec succès.');
+    } catch (error) {
+      notify('error', getAppointmentErrorMessage(error, 'Impossible de mettre à jour le rendez-vous.'));
+    }
   };
   const submitSlot = () => {
     if (!slotDate || !slotStart || !slotEnd || Number(slotDuration) < 1 ||
@@ -758,7 +784,7 @@ export function AdminAppointmentsPage() {
         new Date(`${slotDate}T${slotEnd}`) <= new Date(`${slotDate}T${slotStart}`)) return;
     createSlot.mutate();
   };
-  return <section className="panel" style={{ padding: 24 }}>
+  return <><section className="panel" style={{ padding: 24 }}>
     <p className="eyebrow">{t('Accueil physique')}</p>
     <h1>{t('Gestion des rendez-vous')}</h1>
     <p>{t('Confirmez, refusez ou clôturez les rendez-vous pris par les citoyens.')}</p>
@@ -777,7 +803,6 @@ export function AdminAppointmentsPage() {
       <button className="button primary" disabled={!slotDate || !slotStart || !slotEnd || Number(slotDuration) < 1 || Boolean(breakStart) !== Boolean(breakEnd) || slotEnd <= slotStart || createSlot.isPending} onClick={submitSlot}>
         {t(createSlot.isPending ? 'Enregistrement...' : 'Générer les créneaux')}
       </button>
-      {slotErrorMessage && <p className="error-message">{t(slotErrorMessage)}</p>}
       <h3>{t('Horaires configurés')}</h3>
       {availability.length === 0 ? <p>{t('Aucun horaire configuré.')}</p> : <div style={{ display: 'grid', gap: 8 }}>
         {visibleAvailability.map((day) => <div className="recent-row" key={day.id}>
@@ -812,5 +837,5 @@ export function AdminAppointmentsPage() {
       return <div className="recent-row" key={appointment.id}><CalendarDays size={18} /><span><strong>{new Date(appointment.startsAt).toLocaleString(language === 'mg' ? 'mg-MG' : 'fr-FR', { timeZone: 'Indian/Antananarivo' })} · {appointment.ticketReference ?? t('Référence indisponible')}</strong><small>{appointment.user?.nom ?? appointment.user?.email} · {t(appointment.office)} · {t(appointment.status)}{isFingerprintAppointment ? ` · ${t('Empreintes digitales — ')}${appointment.request?.title ?? t(appointment.request?.type ?? '')}` : ''}</small></span>{appointment.status === 'PENDING' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small primary" onClick={() => void update(appointment.id, 'BOOKED')}>{t('Confirmer')}</button><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button></span>}{appointment.status === 'BOOKED' && <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}><button className="button small appointment-reject" onClick={() => void update(appointment.id, 'CANCELLED')}>{t('Refuser')}</button><button className="button small appointment-complete" disabled={new Date(appointment.endsAt) > new Date()} onClick={() => void update(appointment.id, 'COMPLETED')}>{t(isFingerprintAppointment ? 'Empreintes prises / remis au guichet' : 'Terminer')}</button></span>}</div>;
     })}</div>}
     <Pagination page={appointmentPage} totalPages={appointmentTotalPages} onChange={setAppointmentPage} />
-  </section>;
+  </section><Toast toast={toast} /></>;
 }
