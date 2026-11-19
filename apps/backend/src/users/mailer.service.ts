@@ -1,11 +1,30 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { createTransport, type Transporter } from 'nodemailer';
 
+const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
+const SENDER_NAME = 'Préfecture d’Ihosy';
+
 @Injectable()
 export class MailerService {
   private readonly logger = new Logger(MailerService.name);
   private transporter?: Transporter;
 
+  /** Clé d'API Brevo (envoi par HTTPS, fonctionne sur Render gratuit). */
+  private getBrevoApiKey() {
+    return process.env.BREVO_API_KEY?.trim() || undefined;
+  }
+
+  /** Adresse d'expéditeur (doit être confirmée dans Brevo si l'API Brevo est utilisée). */
+  private getFromAddress() {
+    return (
+      process.env.BREVO_SENDER_EMAIL?.trim() ||
+      process.env.SMTP_FROM?.trim() ||
+      process.env.SMTP_USER?.trim() ||
+      'joashclaudio@gmail.com'
+    );
+  }
+
+  /** Transport SMTP : utilisé uniquement si BREVO_API_KEY est absente (ex. en local). */
   private getTransport() {
     const host = process.env.SMTP_HOST?.trim() || 'smtp.gmail.com';
     const port = Number(process.env.SMTP_PORT?.trim() || '465');
@@ -29,15 +48,47 @@ export class MailerService {
       socketTimeout: 15_000,
     });
 
-    return { transporter: this.transporter, from: process.env.SMTP_FROM?.trim() || user };
+    return { transporter: this.transporter, from: this.getFromAddress() };
   }
 
   assertConfigured() {
+    if (this.getBrevoApiKey()) return;
     this.getTransport();
   }
 
-  async sendCitizenDeactivation(email: string, locale: string) {
+  /** Envoie un e-mail : par l'API Brevo si BREVO_API_KEY est définie, sinon par SMTP. */
+  private async deliver(email: string, subject: string, text: string) {
+    const apiKey = this.getBrevoApiKey();
+
+    if (apiKey) {
+      const response = await fetch(BREVO_API_URL, {
+        method: 'POST',
+        headers: {
+          'api-key': apiKey,
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: SENDER_NAME, email: this.getFromAddress() },
+          to: [{ email }],
+          subject,
+          textContent: text,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+
+      if (!response.ok) {
+        const details = await response.text().catch(() => '');
+        throw new Error(`Brevo API error ${response.status}: ${details}`);
+      }
+      return;
+    }
+
     const { transporter, from } = this.getTransport();
+    await transporter.sendMail({ from: `"${SENDER_NAME}" <${from}>`, to: email, subject, text });
+  }
+
+  async sendCitizenDeactivation(email: string, locale: string) {
     const message = locale === 'mg'
       ? {
           subject: 'Najanona ny kaontinao olom-pirenena',
@@ -48,12 +99,9 @@ export class MailerService {
           text: 'Bonjour,\n\nVotre compte sur la plateforme de la Préfecture d’Ihosy vient d’être désactivé. Pour toute information complémentaire, veuillez contacter la préfecture.\n\nPréfecture d’Ihosy',
         };
 
+    this.assertConfigured();
     try {
-      await transporter.sendMail({
-        from: `"Préfecture d’Ihosy" <${from}>`,
-        to: email,
-        ...message,
-      });
+      await this.deliver(email, message.subject, message.text);
     } catch (error) {
       this.logger.error(
         `Failed to send account deactivation email to ${email}`,
@@ -64,9 +112,9 @@ export class MailerService {
   }
 
   private async send(email: string, subject: string, text: string, failureMessage: string) {
-    const { transporter, from } = this.getTransport();
+    this.assertConfigured();
     try {
-      await transporter.sendMail({ from: `"Préfecture d’Ihosy" <${from}>`, to: email, subject, text });
+      await this.deliver(email, subject, text);
     } catch (error) {
       this.logger.error(`Failed to send email to ${email}`, error instanceof Error ? error.stack : String(error));
       throw new ServiceUnavailableException(failureMessage);
