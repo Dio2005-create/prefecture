@@ -3,7 +3,8 @@ import { SearchHit } from './ai.types';
 
 @Injectable()
 export class QdrantService {
-  private readonly baseUrl = process.env.QDRANT_URL ?? 'http://qdrant:6333';
+  private readonly baseUrl = (process.env.QDRANT_URL ?? 'http://qdrant:6333').replace(/\/+$/, '');
+  private readonly apiKey = process.env.QDRANT_API_KEY;
   private readonly collection = process.env.QDRANT_COLLECTION ?? 'archives_prefecture';
 
   async indexer(points: Array<{ id: string; vector: number[]; payload: object }>): Promise<void> {
@@ -16,7 +17,7 @@ export class QdrantService {
   private async ensureCollection(size: number): Promise<void> {
     const response = await fetch(`${this.baseUrl}/collections/${this.collection}`, {
       method: 'PUT',
-      headers: { 'content-type': 'application/json' },
+      headers: this.headers(),
       body: JSON.stringify({ vectors: { size, distance: 'Cosine' } }),
     });
     if (!response.ok && response.status !== 409) {
@@ -51,7 +52,9 @@ export class QdrantService {
 
   private async collectionStatus(): Promise<number> {
     try {
-      const response = await fetch(`${this.baseUrl}/collections/${this.collection}`);
+      const response = await fetch(`${this.baseUrl}/collections/${this.collection}`, {
+        headers: this.headers(),
+      });
       if (response.status === 404) return 404;
       if (!response.ok) throw new Error(`Qdrant returned ${response.status}`);
       return response.status;
@@ -64,7 +67,7 @@ export class QdrantService {
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
         method,
-        headers: { 'content-type': 'application/json' },
+        headers: this.headers(),
         body: JSON.stringify(body),
       });
       if (!response.ok) {
@@ -74,5 +77,12 @@ export class QdrantService {
     } catch (error) {
       throw new ServiceUnavailableException('La base vectorielle Qdrant est indisponible', { cause: error });
     }
+  }
+
+  private headers(): Record<string, string> {
+    return {
+      'content-type': 'application/json',
+      ...(this.apiKey ? { 'api-key': this.apiKey } : {}),
+    };
   }
 }

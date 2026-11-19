@@ -30,13 +30,69 @@ export const requestModels: Record<RequestType, RequestModel> = {
 
 export function findRequestModel(question: string): RequestType | undefined {
   const normalizedQuestion = normalize(question);
-  const matches = Object.entries(requestModels)
+  const exactMatches = Object.entries(requestModels)
     .flatMap(([type, model]) => model.aliases.map((alias) => ({ type: type as RequestType, alias: normalize(alias) })))
     .filter(({ alias }) => normalizedQuestion.includes(alias))
     .sort((left, right) => right.alias.length - left.alias.length);
-  return matches[0]?.type;
+  if (exactMatches.length) return exactMatches[0].type;
+
+  const questionWords = normalizedQuestion.match(/[a-z0-9]+/g) ?? [];
+  const fuzzyMatches = Object.entries(requestModels)
+    .flatMap(([type, model]) => model.aliases.map((alias) => ({
+      type: type as RequestType,
+      words: normalize(alias).match(/[a-z0-9]+/g) ?? [],
+    })))
+    .flatMap(({ type, words }) => {
+      if (!words.length || words.length > questionWords.length) return [];
+      for (let start = 0; start <= questionWords.length - words.length; start += 1) {
+        let distance = 0;
+        for (let index = 0; index < words.length; index += 1) {
+          const expected = words[index];
+          const actual = questionWords[start + index];
+          if (expected === actual) continue;
+          if (expected.length < 4 || actual.length < 4) {
+            distance = 2;
+            break;
+          }
+          distance += editDistanceAtMostOne(expected, actual);
+          if (distance > 1) break;
+        }
+        if (distance === 1) return [{ type }];
+      }
+      return [];
+    });
+
+  const matchingTypes = [...new Set(fuzzyMatches.map(({ type }) => type))];
+  return matchingTypes.length === 1 ? matchingTypes[0] : undefined;
 }
 
 function normalize(value: string) {
-  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function editDistanceAtMostOne(left: string, right: string) {
+  if (Math.abs(left.length - right.length) > 1) return 2;
+
+  let leftIndex = 0;
+  let rightIndex = 0;
+  let differences = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    if (left[leftIndex] === right[rightIndex]) {
+      leftIndex += 1;
+      rightIndex += 1;
+      continue;
+    }
+
+    differences += 1;
+    if (differences > 1) return 2;
+    if (left.length > right.length) leftIndex += 1;
+    else if (right.length > left.length) rightIndex += 1;
+    else {
+      leftIndex += 1;
+      rightIndex += 1;
+    }
+  }
+
+  if (leftIndex < left.length || rightIndex < right.length) differences += 1;
+  return differences;
 }

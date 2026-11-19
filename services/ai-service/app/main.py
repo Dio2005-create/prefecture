@@ -2,18 +2,28 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from io import BytesIO
 from typing import Any
 
+import fitz
 import httpx
+import pytesseract
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from PIL import Image, UnidentifiedImageError
 from pypdf import PdfReader
 from docx import Document as WordDocument
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 app = FastAPI(title="Archives AI Service", version="0.2.0")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+OCR_LANGUAGES = os.getenv("OCR_LANGUAGES", "fra+eng")
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+MAX_PDF_PAGES = 30
+MAX_IMAGE_PIXELS = 40_000_000
+OCR_TIMEOUT_SECONDS = 30
 
 
 class TextRequest(BaseModel):
@@ -80,24 +90,73 @@ async def classify(request: ClassifyRequest) -> dict[str, Any]:
 
 @app.post("/ocr")
 async def ocr(file: UploadFile = File(...)) -> dict[str, str]:
-    content = await file.read()
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    await file.close()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Fichier trop volumineux (20 Mo maximum)")
+
     suffix = Path(file.filename or "document").suffix.lower()
     if suffix == ".pdf":
-        try:
-            from io import BytesIO
-            reader = PdfReader(BytesIO(content))
-            text = " ".join((page.extract_text() or "") for page in reader.pages)
-            return {"text": " ".join(text.split())}
-        except Exception as error:
-            raise HTTPException(status_code=422, detail="PDF illisible") from error
+        return {"text": await run_in_threadpool(extraire_texte_pdf, content)}
     if suffix in {".txt", ".md"}:
         return {"text": " ".join(content.decode("utf-8", errors="ignore").split())}
     if suffix == ".docx":
-        try:
-            from io import BytesIO
-            document = WordDocument(BytesIO(content))
-            text = " ".join(paragraph.text for paragraph in document.paragraphs)
-            return {"text": " ".join(text.split())}
-        except Exception as error:
-            raise HTTPException(status_code=422, detail="DOCX illisible") from error
-    raise HTTPException(status_code=501, detail="OCR PDF/image à installer avec PaddleOCR ou Tesseract")
+        return {"text": await run_in_threadpool(extraire_texte_docx, content)}
+    if suffix in {".jpg", ".jpeg", ".png", ".tif", ".tiff"}:
+        return {"text": await run_in_threadpool(extraire_texte_image, content)}
+    raise HTTPException(status_code=415, detail="Format non pris en charge")
+
+
+def extraire_texte_pdf(content: bytes) -> str:
+    try:
+        reader = PdfReader(BytesIO(content))
+        if len(reader.pages) > MAX_PDF_PAGES:
+            raise HTTPException(status_code=413, detail="PDF trop long (30 pages maximum)")
+
+        pages = [(page.extract_text() or "").strip() for page in reader.pages]
+        if any(not page for page in pages):
+            with fitz.open(stream=content, filetype="pdf") as document:
+                for index, page_text in enumerate(pages):
+                    if page_text:
+                        continue
+                    pixmap = document.load_page(index).get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+                    image = Image.open(BytesIO(pixmap.tobytes("png")))
+                    pages[index] = reconnaitre_texte(image)
+        return " ".join("\n".join(pages).split())
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=422, detail="PDF illisible") from error
+
+
+def extraire_texte_image(content: bytes) -> str:
+    try:
+        with Image.open(BytesIO(content)) as image:
+            if image.width * image.height > MAX_IMAGE_PIXELS:
+                raise HTTPException(status_code=413, detail="Image trop grande pour être traitée")
+            image.load()
+            return " ".join(reconnaitre_texte(image).split())
+    except HTTPException:
+        raise
+    except (UnidentifiedImageError, OSError) as error:
+        raise HTTPException(status_code=422, detail="Image illisible") from error
+
+
+def extraire_texte_docx(content: bytes) -> str:
+    try:
+        document = WordDocument(BytesIO(content))
+        text = " ".join(paragraph.text for paragraph in document.paragraphs)
+        return " ".join(text.split())
+    except Exception as error:
+        raise HTTPException(status_code=422, detail="DOCX illisible") from error
+
+
+def reconnaitre_texte(image: Image.Image) -> str:
+    try:
+        return pytesseract.image_to_string(image, lang=OCR_LANGUAGES, timeout=OCR_TIMEOUT_SECONDS)
+    except pytesseract.TesseractNotFoundError as error:
+        raise HTTPException(status_code=503, detail="Le moteur OCR Tesseract est indisponible") from error
+    except RuntimeError as error:
+        if "timeout" in str(error).lower():
+            raise HTTPException(status_code=504, detail="Le traitement OCR a dépassé le délai autorisé") from error
+        raise HTTPException(status_code=503, detail="Le moteur OCR Tesseract n’a pas pu traiter le fichier") from error

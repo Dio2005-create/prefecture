@@ -33,7 +33,7 @@ Endpoints de vérification :
 - Qdrant : http://localhost:6333/healthz
 - MinIO console : http://localhost:9001
 
-Le stockage métier, le premier flux d’indexation et l’authentification RBAC sont disponibles. L’OCR et la classification automatique restent les prochaines étapes.
+Le stockage métier, l’indexation documentaire, l’OCR des PDF scannés et des images (Tesseract) ainsi que l’authentification RBAC sont disponibles. L’OCR est configuré en français et en anglais par défaut ; le paquet de langue Tesseract correspondant doit être installé pour toute autre langue.
 
 Ollama doit être installé localement et exposer les modèles configurés avant d'appeler l'indexation ou le RAG.
 
@@ -69,9 +69,9 @@ Ouvrir ensuite http://localhost:5173. L'API NestJS est utilisée sur `http://loc
 - `POST /rag/search` : recherche sémantique brute
 - `POST /rag/ask` : réponse RAG avec sources
 
-Variables IA : `OLLAMA_URL`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_CHAT_MODEL`, `QDRANT_URL`, `QDRANT_COLLECTION`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `EMBEDDING_MODEL`.
+Variables IA : `OLLAMA_URL`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_CHAT_MODEL`, `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `EMBEDDING_MODEL`. Pour Docker Compose, définissez `QDRANT_URL`, `QDRANT_API_KEY` et `QDRANT_COLLECTION` dans le fichier `.env` à la racine du dépôt (ou dans l’environnement qui lance Compose) pour utiliser Qdrant Cloud ; sans ces variables, Compose conserve le Qdrant local.
 
-Le service FastAPI expose aussi `POST /ocr`, `POST /extract-text`, `POST /classify`, `POST /embeddings` et `POST /generate`. Les fichiers PDF/images nécessitent encore l'installation d'un moteur OCR local (PaddleOCR ou Tesseract).
+Le service FastAPI expose aussi `POST /ocr`, `POST /extract-text`, `POST /classify`, `POST /embeddings` et `POST /generate`. Le conteneur IA installe Tesseract et les données de langue française ; `OCR_LANGUAGES` permet de sélectionner d’autres langues présentes dans l’environnement Tesseract.
 
 Pour la migration pgvector : `docker compose exec backend npx prisma migrate deploy`.
 

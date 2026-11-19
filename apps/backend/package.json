@@ -4,6 +4,7 @@
   "scripts": {
     "start:dev": "nest start --watch",
     "build": "nest build",
+    "test": "node -r ts-node/register --test test/request-models.test.cjs test/qdrant.test.cjs",
     "start": "node dist/src/main",
     "start:prod": "prisma generate && prisma migrate deploy && ts-node prisma/seed.ts && node dist/src/main",
     "prisma:generate": "prisma generate",

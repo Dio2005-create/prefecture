@@ -12,6 +12,8 @@
 
 « Une fois la demande envoyée, je peux retrouver son avancement dans le suivi et consulter les notifications. Je peux également accéder à la rubrique des rendez-vous et choisir un créneau disponible. »
 
+Dans la rubrique reclamation pour reclamer les dossier recu au cas ou il y en a un faute de frappe
+
 ## 2. Back-office
 
 « Je passe maintenant au back-office, l’espace utilisé par les agents. Je vous montre rapidement sa navigation et ses principales fonctions : la file des dossiers, leur instruction avec les actions d’approbation ou de rejet, la production de PDF avec cachet et signature, ainsi que la gestion des rendez-vous. »
