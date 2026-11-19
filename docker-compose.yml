@@ -33,9 +33,9 @@ services:
     build: ./services/ai-service
     environment:
       PORT: 8000
-      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
-      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
-      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-archives_prefecture}
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ""
+      QDRANT_COLLECTION: archives_prefecture
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: mistral
       EMBEDDING_MODEL: nomic-embed-text
@@ -55,9 +55,9 @@ services:
       AI_SERVICE_URL: http://ai-service:8000
       DATABASE_URL: postgresql://archives:archives_dev@postgres:5432/archives
       OLLAMA_URL: http://host.docker.internal:11434
-      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
-      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
-      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-archives_prefecture}
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ""
+      QDRANT_COLLECTION: archives_prefecture
       REQUEST_MODELS_DIR: /app/modeles_pdf
     ports:
       - "3000:3000"

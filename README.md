@@ -69,7 +69,7 @@ Ouvrir ensuite http://localhost:5173. L'API NestJS est utilisée sur `http://loc
 - `POST /rag/search` : recherche sémantique brute
 - `POST /rag/ask` : réponse RAG avec sources
 
-Variables IA : `OLLAMA_URL`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_CHAT_MODEL`, `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `EMBEDDING_MODEL`. Pour Docker Compose, définissez `QDRANT_URL`, `QDRANT_API_KEY` et `QDRANT_COLLECTION` dans le fichier `.env` à la racine du dépôt (ou dans l’environnement qui lance Compose) pour utiliser Qdrant Cloud ; sans ces variables, Compose conserve le Qdrant local.
+Variables IA : `OLLAMA_URL`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_CHAT_MODEL`, `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_COLLECTION`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `EMBEDDING_MODEL`. Docker Compose utilise le Qdrant local (`http://qdrant:6333`) sans clé API. Depuis Windows, si le backend est lancé hors de Docker, utilisez `QDRANT_URL=http://localhost:6333`.
 
 Le service FastAPI expose aussi `POST /ocr`, `POST /extract-text`, `POST /classify`, `POST /embeddings` et `POST /generate`. Le conteneur IA installe Tesseract et les données de langue française ; `OCR_LANGUAGES` permet de sélectionner d’autres langues présentes dans l’environnement Tesseract.
 
