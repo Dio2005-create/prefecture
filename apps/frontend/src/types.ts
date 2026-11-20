@@ -158,6 +158,7 @@ export interface Document {
   titre: string;
   reference?: string;
   type: DocumentType;
+  isPublication?: boolean;
   date?: string;
   serviceEmetteur?: string;
   auteurEmetteur?: string;

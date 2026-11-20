@@ -426,9 +426,13 @@ export function RequestPage() {
               if (nextTypes.length > 0) handleTypeChange(nextTypes[0]);
             }}>
               <option value="">{t('Choisir un service')}</option>
-              {services.map((service) => (
-                <option key={service.id} value={service.id}>{language === 'mg' ? service.nameMg : service.nameFr}</option>
-              ))}
+              {services.map((service) => {
+                const translatedName = t(service.nameFr);
+                const serviceName = language === 'mg'
+                  ? translatedName !== service.nameFr ? translatedName : service.nameMg
+                  : service.nameFr;
+                return <option key={service.id} value={service.id}>{serviceName}</option>;
+              })}
             </select>
           </label>
 

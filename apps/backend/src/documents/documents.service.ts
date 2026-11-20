@@ -1,10 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { StatutDocument, TypeDocument } from '@prisma/client';
 import { QdrantService } from '../ai/qdrant.service';
 import { FastApiAiService } from '../ai/fastapi-ai.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ChunkingService } from './chunking.service';
-import { CreateDocumentDto } from './dto/create-document.dto';
+import { CreateDocumentDto, DocumentScope, DocumentType } from './dto/create-document.dto';
 import { QueryDocumentsDto, UpdateDocumentDto } from './dto/update-document.dto';
 
 @Injectable()
@@ -19,10 +19,15 @@ export class DocumentsService {
   ) {}
 
   create(data: CreateDocumentDto) {
+    if (data.scope === DocumentScope.PUBLICATION && ![DocumentType.ARRETE, DocumentType.COURRIER].includes(data.type)) {
+      throw new BadRequestException('Une publication officielle doit être un arrêté ou un communiqué');
+    }
+
     return this.prisma.documentAdministratif.create({
       data: {
         titre: data.titre,
         type: data.type as TypeDocument,
+        isPublication: data.scope === DocumentScope.PUBLICATION,
         cheminFichier: data.cheminFichier,
         contenuTexte: data.contenuTexte,
         categorieId: data.categorieId,
@@ -71,6 +76,7 @@ export class DocumentsService {
       { chunks: { some: { contenu: { contains: query.search, mode: 'insensitive' as const } } } },
     ] : undefined;
     const where = {
+      isPublication: false,
       ...(query.type ? { type: query.type as TypeDocument } : {}),
       ...(query.categorieId ? { categorieId: query.categorieId } : {}),
       ...(query.statut ? { statut: query.statut as StatutDocument } : {}),
@@ -108,6 +114,7 @@ export class DocumentsService {
     ] : undefined;
     return this.prisma.documentAdministratif.findMany({
       where: {
+        isPublication: true,
         type: { in: ['ARRETE', 'COURRIER'] },
         statut: { in: ['VALIDE', 'ARCHIVE'] },
         ...(dateFilter ? { date: dateFilter } : {}),
@@ -128,6 +135,7 @@ export class DocumentsService {
     ] : undefined;
     return this.prisma.documentAdministratif.findMany({
       where: {
+        isPublication: true,
         type: { in: ['ARRETE', 'COURRIER'] },
         ...(dateFilter ? { date: dateFilter } : {}),
         ...(searchFilter ? { OR: searchFilter } : {}),

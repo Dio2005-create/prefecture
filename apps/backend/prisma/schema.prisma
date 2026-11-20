@@ -604,6 +604,7 @@ model DocumentAdministratif {
   nomFichierOriginal    String?
   mimeType              String?
   tailleFichier         Int?
+  isPublication         Boolean                @default(false)
   statut                StatutDocument         @default(BROUILLON)
   etapeTraitement       String?
   erreurTraitement      String?
@@ -617,6 +618,7 @@ model DocumentAdministratif {
   updatedAt             DateTime               @updatedAt
 
   @@index([type])
+  @@index([isPublication])
   @@index([date])
   @@index([categorieId])
   @@index([statut])

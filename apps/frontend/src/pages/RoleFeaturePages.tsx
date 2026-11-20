@@ -637,8 +637,8 @@ export function AdminPublicationsPage() {
     <PageIntro
       eyebrow={t('Publications')}
       title={t('Arrêtés, communiqués et textes officiels')}
-      description={t('Publication et traçabilité des arrêtés, directives et informations officielles.')}
-      action={<NavLink className="button primary" to="/back/documents/import?type=ARRETE"><UploadCloud size={17} />{t('Importer')}</NavLink>}
+      description={t('Gérez ici les textes officiels destinés aux citoyens, séparément des archives administratives.')}
+      action={<NavLink className="button primary" to="/back/documents/import?type=ARRETE&scope=publication"><UploadCloud size={17} />{t('Importer')}</NavLink>}
     />
     <section className="panel" style={{ padding: 24 }}>
     <div className="toolbar">

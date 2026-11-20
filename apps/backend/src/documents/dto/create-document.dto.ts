@@ -7,6 +7,11 @@ export enum DocumentType {
   AUTRE = 'AUTRE',
 }
 
+export enum DocumentScope {
+  ARCHIVE = 'ARCHIVE',
+  PUBLICATION = 'PUBLICATION',
+}
+
 export class CreateDocumentDto {
   @IsString()
   @MaxLength(250)
@@ -14,6 +19,10 @@ export class CreateDocumentDto {
 
   @IsEnum(DocumentType)
   type!: DocumentType;
+
+  @IsOptional()
+  @IsEnum(DocumentScope)
+  scope?: DocumentScope;
 
   @IsString()
   cheminFichier!: string;

@@ -1,4 +1,4 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { GatewayTimeoutException, HttpException, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 
 @Injectable()
@@ -39,13 +39,21 @@ export class FastApiAiService {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(80_000),
       });
       if (!response.ok) {
         const detail = await response.text();
+        if (response.status === 504) {
+          throw new GatewayTimeoutException('Le traitement IA a dépassé le délai autorisé');
+        }
         throw new Error(`FastAPI returned ${response.status}: ${detail}`);
       }
       return (await response.json()) as Record<string, unknown>;
     } catch (error) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+        throw new GatewayTimeoutException('Le service IA n’a pas répondu dans le délai autorisé', { cause: error });
+      }
       const reason = error instanceof Error ? error.message : 'Erreur inconnue';
       throw new ServiceUnavailableException(`Le service IA FastAPI est indisponible (${reason})`, { cause: error });
     }

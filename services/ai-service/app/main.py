@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from io import BytesIO
@@ -19,6 +20,12 @@ app = FastAPI(title="Archives AI Service", version="0.2.0")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+OLLAMA_NUM_THREADS = int(os.getenv("OLLAMA_NUM_THREADS", "2"))
+OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "2048"))
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "512"))
+OLLAMA_TIMEOUT_SECONDS = 75
+OLLAMA_QUEUE_TIMEOUT_SECONDS = 10
+OLLAMA_SEMAPHORE = asyncio.Semaphore(1)
 OCR_LANGUAGES = os.getenv("OCR_LANGUAGES", "fra+eng")
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_PDF_PAGES = 30
@@ -45,12 +52,32 @@ class GenerateRequest(BaseModel):
 
 async def ollama(path: str, payload: dict[str, Any]) -> dict[str, Any]:
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
+        await asyncio.wait_for(OLLAMA_SEMAPHORE.acquire(), timeout=OLLAMA_QUEUE_TIMEOUT_SECONDS)
+    except TimeoutError as error:
+        raise HTTPException(status_code=503, detail="Le service IA est déjà occupé") from error
+
+    try:
+        payload = {
+            **payload,
+            "options": {
+                "num_thread": OLLAMA_NUM_THREADS,
+                "num_ctx": OLLAMA_NUM_CTX,
+                **payload.get("options", {}),
+            },
+        }
+        if path == "/api/generate":
+            payload["options"]["num_predict"] = OLLAMA_NUM_PREDICT
+
+        async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT_SECONDS) as client:
             response = await client.post(f"{OLLAMA_BASE_URL}{path}", json=payload)
             response.raise_for_status()
             return response.json()
+    except httpx.TimeoutException as error:
+        raise HTTPException(status_code=504, detail="Le traitement IA a dépassé le délai autorisé") from error
     except (httpx.HTTPError, ValueError) as error:
         raise HTTPException(status_code=503, detail="Ollama local est indisponible") from error
+    finally:
+        OLLAMA_SEMAPHORE.release()
 
 
 @app.get("/health")

@@ -1,5 +1,5 @@
 import { IsDateString, IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
-import { DocumentType } from './create-document.dto';
+import { DocumentScope, DocumentType } from './create-document.dto';
 
 export class UploadDocumentDto {
   @IsOptional()
@@ -9,6 +9,10 @@ export class UploadDocumentDto {
 
   @IsEnum(DocumentType)
   type!: DocumentType;
+
+  @IsOptional()
+  @IsEnum(DocumentScope)
+  scope?: DocumentScope;
 
   @IsOptional()
   @IsUUID()

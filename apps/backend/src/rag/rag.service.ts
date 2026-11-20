@@ -101,7 +101,7 @@ export class RagService {
     const localReply = requestType || asksAboutAccount ? null : this.reponseLocaleQuestion(question, language);
     if (localReply) return this.enregistrerHistorique(question, localReply, [], utilisateurId, activeConversationId);
     const searchTerm = this.termesRecherche(question).at(-1);
-    const personalResults = searchTerm
+    const personalResults = searchTerm && asksAboutAccount
       ? await this.rechercherDansDocumentsPersonnels(utilisateurId, searchTerm, topK)
       : { hits: [], unreadableCount: 0 };
     const hits = personalResults.hits;
@@ -133,7 +133,10 @@ export class RagService {
     try {
       reponse = (await this.ai.generer(prompt)).trim();
       if (!reponse) throw new Error('Le modèle IA a retourné une réponse vide');
-    } catch {
+    } catch (error) {
+      this.logger.warn(
+        `Génération IA indisponible, réponse locale utilisée: ${error instanceof Error ? error.message : 'erreur inconnue'}`,
+      );
       reponse = requestType
         ? this.reponseModeleLocale(requestType, language)
         : this.construireReponseLocale(question, hits, language);

@@ -288,10 +288,11 @@ export const documentService = {
   list: async (params: Record<string, string | number | undefined>) =>
     (await api.get<PaginatedDocuments>('/documents', { params })).data,
   get: async (id: string) => (await api.get<Document>(`/documents/${id}`)).data,
-  upload: async (file: File, fields: { type: string; titre?: string }) => {
+  upload: async (file: File, fields: { type: string; scope: 'ARCHIVE' | 'PUBLICATION'; titre?: string }) => {
     const form = new FormData();
     form.append('file', file);
     form.append('type', fields.type);
+    form.append('scope', fields.scope);
     if (fields.titre) form.append('titre', fields.titre);
     return (await api.post<Document>('/documents/upload', form)).data;
   },

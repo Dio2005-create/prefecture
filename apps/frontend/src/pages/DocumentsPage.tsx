@@ -18,7 +18,7 @@ export function DocumentsPage() {
   });
   const resetFilters = () => { setSearch(''); setDateFrom(''); setDateTo(''); setPage(1); };
   return <>
-    <PageIntro eyebrow={t('Fonds documentaire')} title={t('Documents')} description={t('Consultez, filtrez et préparez les archives pour l’indexation.')} action={<NavLink className="button primary" to="/back/documents/import"><UploadCloud size={17} />{t('Importer')}</NavLink>} />
+    <PageIntro eyebrow={t('Fonds documentaire')} title={t('Documents')} description={t('Consultez et indexez les archives internes réservées à l’administration.')} action={<NavLink className="button primary" to="/back/documents/import?scope=archive"><UploadCloud size={17} />{t('Importer')}</NavLink>} />
     <div className="toolbar">
       <label className="search-field"><Search size={18} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder={t('Rechercher par titre, référence ou contenu')} /></label>
       <label className="date-filter">{t('Du')}<input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPage(1); }} /></label>
@@ -44,7 +44,7 @@ export function DocumentDetailPage() {
   if (isError || !document) return <ErrorState message={t('Impossible de charger ce document depuis le backend local.')} />;
 
   return <>
-    <PageIntro eyebrow={t('Fiche documentaire')} title={document.titre} description={t('Informations et contenu enregistrés dans le fonds documentaire.')} action={<NavLink className="button" to="/back/documents">{t('Retour aux documents')}</NavLink>} />
+    <PageIntro eyebrow={t('Fiche documentaire')} title={document.titre} description={t('Informations et contenu enregistrés dans le fonds documentaire.')} action={<NavLink className="button" to={document.isPublication ? '/back/publications' : '/back/documents'}>{t(document.isPublication ? 'Retour aux publications' : 'Retour aux documents')}</NavLink>} />
     <div className="detail-grid">
       <section className="panel detail-panel">
         <div className="panel-heading"><div><p className="eyebrow">{t('Métadonnées')}</p><h2>{t('Informations du document')}</h2></div><Status status={document.statut} /></div>

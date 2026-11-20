@@ -12,55 +12,55 @@ async function seedServices() {
     {
       code: 'BC',
       nameFr: 'Acte de naissance',
-      nameMg: 'Dokimarahana fiziana',
+      nameMg: 'Kopia nahaterahana',
       description: 'Demande d\'extrait ou de copie d\'acte de naissance',
     },
     {
       code: 'CR',
       nameFr: 'Certificat de résidence',
-      nameMg: 'Tanarana',
+      nameMg: 'Taratasy fanamarinam-ponenana',
       description: 'Certificat attestant la résidence d\'une personne',
     },
     {
       code: 'CIN',
       nameFr: 'Carte d\'identité nationale',
-      nameMg: 'Karatan\'ny isa',
+      nameMg: 'Kara-panondrom-pirenena',
       description: 'Demande de CIN neuve ou renouvellement',
     },
     {
       code: 'AP',
       nameFr: 'Permis de construire',
-      nameMg: 'Aomanana handrosoina',
+      nameMg: 'Fahazoan-dalana hanorina',
       description: 'Autorisation de construire un bâtiment',
     },
     {
       code: 'LS',
       nameFr: 'Situation du terrain',
-      nameMg: 'Toetran\'ny tany',
+      nameMg: 'Fanamarinana ny satan’ny tany',
       description: 'Vérification de la situation et de la propriété du terrain',
     },
     {
       code: 'BCC',
       nameFr: 'Certificat de bonne conduite',
-      nameMg: 'Toetran\'ny fihetsika',
+      nameMg: 'Taratasy fanamarinana ny fitondran-tena',
       description: 'Attestation de bonne moralité et conduite',
     },
     {
       code: 'VR',
       nameFr: 'Immatriculation de véhicule',
-      nameMg: 'Fisoratana karôtera',
+      nameMg: 'Fisoratana anarana ny fiara',
       description: 'Enregistrement ou renouvellement d\'immatriculation',
     },
     {
       code: 'DL',
       nameFr: 'Déclaration de perte',
-      nameMg: 'Filasafidim-pihitrizahana',
+      nameMg: 'Fanambarana fahaverezana',
       description: 'Déclaration officielle de perte de documents',
     },
     {
       code: 'ASSOC',
       nameFr: 'Création ou déclaration d’association / ONG',
-      nameMg: 'Fananganana fikambanana na ONG',
+      nameMg: 'Fananganana na fanambarana fikambanana / ONG',
       description: 'Dépôt d’un dossier de création ou de déclaration d’une association ou ONG',
     },
     {
@@ -90,7 +90,7 @@ async function seedServices() {
     {
       code: 'RECLAMATION',
       nameFr: 'Réclamation citoyenne',
-      nameMg: 'Fampandrenesana na fitarainana',
+      nameMg: 'Fitarainana avy amin’ny olom-pirenena',
       description: 'Réclamation concernant une erreur sur un document administratif déjà délivré',
     },
   ];
